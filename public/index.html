@@ -1380,11 +1380,18 @@ function enrich(raw){
     const insta=t["contact:instagram"]||t.instagram||"",fb=t["contact:facebook"]||t.facebook||"",vk=t["contact:vk"]||t["contact:vkontakte"]||"",tgc=t["contact:telegram"]||"";
     const addr=[t["addr:street"]||t["addr:place"],t["addr:housenumber"]].filter(Boolean).join(" ");
     const why=[];let sc=0;
-    if(phone){sc+=2;why.push("телефон")} if(insta||fb||vk||tgc){sc+=2;why.push("соцсети")} if(email){sc+=1;why.push("email")} if(t.opening_hours){sc+=1;why.push("часы")} if(addr){sc+=1;why.push("адрес")} if(t["dg:rating"])why.push("★ "+t["dg:rating"]+" ("+t["dg:reviews"]+")");
+    if(phone){sc+=2;why.push("телефон")} if(insta||fb||vk||tgc){sc+=2;why.push("соцсети")} if(email){sc+=1;why.push("email")} if(t.opening_hours){sc+=1;why.push("часы")} if(addr){sc+=1;why.push("адрес")} if(t["dg:rating"]){const rv=+t["dg:reviews"]||0,rt=+t["dg:rating"]||0;if(rv>=5)sc+=1;if(rv>=20&&rt>=4.3)sc+=1;why.push("★ "+t["dg:rating"]+" ("+rv+")")}
     const tag=tagKey(t),niche=nicheOf(t);
     out.push({id:r.id,tags:t,lat:r.lat??null,lon:r.lon??null,dg:r.dg||null,unk:!!r.unk,name:t.name,phone,email,insta,fb,vk,tgc,addr,score:sc,why,temp:sc>=4?"hot":sc>=2?"warm":"cold",tag,niche,kind:KIND[t.shop]||KIND[t.amenity]||(t.craft?"Мастерская":"Бизнес")});
   }
-  return out.sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,"ru"));
+  out.sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,"ru"));
+  /* Without phones in the data (e.g. a 2GIS key without contacts) nobody reaches "hot" by the absolute rule.
+     Then rank inside this search: the top quarter with real signals is hot, the next third warm. */
+  if(out.length&&!out.some(l=>l.temp==="hot")){
+    const n=out.length,hotN=Math.max(1,Math.round(n*.25)),warmN=Math.round(n*.6);
+    out.forEach((l,i)=>{l.temp=l.score<1?"cold":i<hotN?"hot":i<warmN?"warm":"cold";l.rel=true});
+  }
+  return out;
 }
 const DEMO=[
  ["Салон «Лаванда»",{shop:"beauty"},"ул. Липовая 12","+000 2000 1111","Mo-Sa 09:00-20:00",1],["Пекарня у моста",{shop:"bakery"},"Набережная 3","+000 2000 2222","Mo-Su 07:00-19:00"],
