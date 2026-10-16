@@ -313,6 +313,7 @@ const PH={
   vet:["1725409796872-8b41e8eca929","1733783506192-653df6185a7d","1596272875729-ed2ff7d6d9c5","1700665537650-1bf37979aae0","1770836037275-38b44e4b101f"],
   optic:["1759910546772-73e4bb7fdadd","1545038500-1df28978d761","1788347101988-bf40abcbb2c7","1775825094939-3759ede3dec2","1762718900539-c51799fd71b3"],
   tailor:["1718184021018-d2158af6b321","1633655442356-ab2dbc69c772","1625479142928-c2f2914318f2","1633655442168-c6ef0ed2f984","1633655442330-0b44ca0cce9b","1633655442432-620aa55d7ac1"],
+  keys:["1756341782434-3020b9d17372","1643804926339-e94f0a655185","1503792070985-b4147d061915","1635237393049-55046279ebb8","1722487631997-cf1e0f92c2c4","1575908539614-ff89490f4a78","1741156386380-0236c72eb6f9","1707296916319-037ad32dc7f6","1685886069739-c1b96bba7953","1503792243040-7ce7f5f06085"],
   cobbler:["1721755563962-7177a7b2e817","1723466388367-e4499365e8dd","1637640125496-31852f042a60","1633655442330-0b44ca0cce9b"],
   phone:["1550041473-d296a3a8a18a","1539331586018-346b53b2aaa4","1746005514011-ea00280f3b6e","1639776739297-f7e1f21526f4","1746005718004-1f992c399428"],
   florist:["1487070183336-b863922373d4","1709294728779-6be509d45255","1642751652611-bb9a7cad58a3","1587317997383-2e6c1b24040f","1612526031467-2b6bf1f49961","1491994336086-44f5d76dd8f2","1608656218680-e8be81ce71d7","1586973698216-0c4c285d7afd"],
@@ -401,6 +402,10 @@ const KK={
     h:["Подгоним точно по фигуре","Ремонт и пошив руками мастера","Одежда, которая сидит идеально"],
     lead:"Подгонка, ремонт и пошив на заказ. Принесите вещь — скажем цену и срок сразу.",
     pr:[["Укоротить брюки","","от 400"],["Замена молнии","","от 450"],["Ушить платье","","от 900"],["Ремонт пальто","подкладка, пуговицы","от 700"],["Пошив на заказ","","от 5 000"],["Срочный ремонт","за 1 день","+50%"]]},
+  keys:{pal:"craft",ph:"keys",pin:"1756341782434-3020b9d17372",fonts:["oswald","unb","clean"],mod:"book",cta:"Оставить заявку",
+    h:["Дубликат ключа за 5 минут","Ключи от квартиры, домофона и машины","Сделаем копию ключа, пока вы ждёте"],
+    lead:"Дубликаты квартирных, домофонных и автомобильных ключей при вас. Приносите ключ — через несколько минут уйдёте с копией.",
+    pr:[["Ключ от квартиры","английский, крестообразный","от 150"],["Сувальдный ключ","для металлических дверей","от 400"],["Домофонный ключ","таблетка или брелок","от 250"],["Автомобильный ключ","с чипом и привязкой","от 1 500"],["Ключ-карта","для офиса и подъезда","от 300"],["Вскрытие и замена замков","квартира, гараж, авто","от 1 200"]]},
   cobbler:{pal:"craft",ph:"cobbler",fonts:["oswald","play","unb"],mod:"book",cta:"Оставить заявку",
     h:["Вернём любимой обуви вторую жизнь","Починим то, что жалко выбросить","Ремонт обуви и ключи за 15 минут"],
     lead:"Набойки, молнии, прошивка и изготовление ключей. Большинство работ делаем при вас.",
@@ -441,7 +446,7 @@ function kkOf(tag,niche,name){
   if(tag==="car_repair"||tag==="car_parts")return"car";if(tag==="tyres")return"tyres";if(tag==="car_wash")return"wash";
   if(tag==="dentist")return"dentist";if(tag==="doctors"||tag==="clinic"||tag==="medical_supply")return"clinic";if(tag==="veterinary")return"vet";
   if(tag==="optician"||tag==="hearing_aids")return"optic";
-  if(tag==="tailor"||tag==="sewing")return"tailor";if(tag==="shoe_repair"||tag==="locksmith")return"cobbler";
+  if(tag==="tailor"||tag==="sewing")return"tailor";if(tag==="locksmith"||/ключ/.test(n))return"keys";if(tag==="shoe_repair")return"cobbler";
   if(tag==="electronics_repair"||/телефон|phone|iphone|смартфон/.test(n))return"phone";
   if(tag==="florist")return"florist";if(tag==="pet")return"pet";
   if(["clothes","gift","jewelry","toys","furniture","books"].includes(tag)||niche==="shop")return"store";
@@ -485,7 +490,7 @@ function weekRows(wk){
 /* ---------- brand generator ---------- */
 const HUES={barber:[[18,38],[195,215]],salon:[[330,352],[15,28]],nails:[[320,345],[260,280]],massage:[[20,38],[150,170]],cafe:[[18,34],[150,165]],bakery:[[25,40],[8,18]],restaurant:[[2,16],[140,160]],
   car:[[42,50],[0,8],[210,222]],tyres:[[42,50],[0,8]],wash:[[190,210],[220,235]],dentist:[[170,195],[205,215]],clinic:[[200,215],[165,180]],vet:[[150,170],[25,40]],optic:[[220,250],[175,190]],
-  tailor:[[22,38],[340,355]],cobbler:[[20,34],[0,10]],phone:[[250,275],[190,205]],workshop:[[22,38],[200,215]],florist:[[330,350],[95,125]],pet:[[20,40],[175,195]],store:[[0,360]],other:[[0,360]]};
+  tailor:[[22,38],[340,355]],keys:[[38,50],[200,215]],cobbler:[[20,34],[0,10]],phone:[[250,275],[190,205]],workshop:[[22,38],[200,215]],florist:[[330,350],[95,125]],pet:[[20,40],[175,195]],store:[[0,360]],other:[[0,360]]};
 const DARKISH={barber:.75,car:.6,tyres:.7,phone:.6,cobbler:.5,restaurant:.45,wash:.4,store:.4,other:.35};
 function hsl2hex(h,s,l){s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));return"#"+[f(0),f(8),f(4)].map(x=>Math.round(x*255).toString(16).padStart(2,"0")).join("")}
 function lum(hex){const n=parseInt(hex.slice(1),16),c=[n>>16,(n>>8)&255,n&255].map(v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)});return .2126*c[0]+.7152*c[1]+.0722*c[2]}
@@ -511,7 +516,7 @@ const TW={/* weights in THEMES order: bento brutal elegant cinema journal pop */
   cafe:[1,1,1.5,2,2,2.5],bakery:[1,.5,2.5,1,2,2],restaurant:[.5,1,2,3,2,.5],
   car:[2,3,0,2.5,1,.5],tyres:[1.5,3,0,2,1,1],wash:[2,2,0,2,1,2],
   dentist:[3,0,1.5,.5,2,1],clinic:[3,0,1,.5,2,1],vet:[2.5,0,1,.5,1.5,2.5],optic:[2,1,1.5,1,2,1],
-  tailor:[1,1.5,2.5,1,2.5,.5],cobbler:[1,3,1,1.5,2,.5],phone:[2,2.5,0,2,1.5,1.5],workshop:[1.5,3,.5,1.5,2,.5],
+  tailor:[1,1.5,2.5,1,2.5,.5],keys:[2,2,0,2,2,1],cobbler:[1,3,1,1.5,2,.5],phone:[2,2.5,0,2,1.5,1.5],workshop:[1.5,3,.5,1.5,2,.5],
   pet:[2,0,.5,.5,1,3.5],store:[2,1.5,1,1,2,2.5],other:[1,1,1,1,1,1]};
 function pickTheme(kk,seed){const w=TW[kk]||TW.other;const R=rng((seed^0x9e3779b9)>>>0);const tot=w.reduce((a,b)=>a+b,0);let x=R()*tot;for(let i=0;i<w.length;i++){x-=w[i];if(x<=0)return i}return 0}
 const VIVID=["#FF4D00","#C6FF00","#2B59FF","#FF2E63","#FFD400","#00D18F"];
@@ -936,6 +941,7 @@ async function bootSite(){
   const F=DISPLAY[TH.fonts[Math.floor(R()*TH.fonts.length)]];
   const logoType=th==="brutal"?4:th==="elegant"?(R()<.5?2:0):Math.floor(R()*4);
   const photos=(PH[K.ph]||PH.store).slice();for(let i=photos.length-1;i>0;i--){const j=Math.floor(R()*(i+1));[photos[i],photos[j]]=[photos[j],photos[i]]}
+  if(K.pin){const pi=photos.indexOf(K.pin);if(pi>0){photos.splice(pi,1);photos.unshift(K.pin)}}
   if(d.ph)photos.unshift("__own__");
   const srcOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?viaCDN(d.ph,w):U(id)(w)};
   const directOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?d.ph:DIRECT(id)(w)};
