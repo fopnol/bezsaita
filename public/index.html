@@ -294,7 +294,10 @@ function telHref(p){const d=String(p||"").split(/[;,]/)[0].replace(/[^\d+]/g,"")
 /* ============================================================
    DEMO SITE  (#s/<payload>)
    ============================================================ */
-const U=id=>w=>"https://images.unsplash.com/photo-"+id+"?auto=format&fit=crop&w="+w+"&q=72";
+/* Photos go through our own domain (Netlify Image CDN), so they load even where the photo stock site is blocked or slow. */
+const DIRECT=id=>w=>"https://images.unsplash.com/photo-"+id+"?auto=format&fit=crop&w="+w+"&q=72";
+const viaCDN=(url,w)=>/^https?:/.test(location.origin)?"/.netlify/images?url="+encodeURIComponent(url)+"&w="+w+"&q=72":url;
+const U=id=>w=>viaCDN(DIRECT(id)(w),w);
 const PH={
   barber:["1585747860715-2ba37e788b70","1503951914875-452162b0f3f1","1599351431202-1e0f0137899a","1621605815971-fbc98d665033","1605497788044-5a32c7078486","1517832606299-7ae9b720a186","1621645582931-d1d3e6564943","1647140655214-e4a2d914971f","1567894340315-735d7c361db0","1493256338651-d82f7acb2b38","1657105052497-f996284ffff8","1536520002442-39764a41e987"],
   salon:["1633681926022-84c23e8cb2d6","1634449571010-02389ed0f9b0","1580618672591-eb180b1a973f","1600948836101-f9ffda59d250","1521590832167-7bcbfaa6381f","1595475884562-073c30d45670","1562322140-8baeececf3df","1675034743339-0b0747047727","1560066984-138dadb4c035","1633681926035-ec1ac984418a","1560869713-7d0a29430803"],
@@ -934,8 +937,9 @@ async function bootSite(){
   const logoType=th==="brutal"?4:th==="elegant"?(R()<.5?2:0):Math.floor(R()*4);
   const photos=(PH[K.ph]||PH.store).slice();for(let i=photos.length-1;i>0;i--){const j=Math.floor(R()*(i+1));[photos[i],photos[j]]=[photos[j],photos[i]]}
   if(d.ph)photos.unshift("__own__");
-  const srcOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?d.ph:U(id)(w)};
-  const pic=(i,w,cls,extra)=>'<div class="ph'+(cls?" "+cls:"")+'"'+(extra||"")+'><img loading="'+(i<2?"eager":"lazy")+'" alt="" src="'+esc(srcOf(i,w))+'" onerror="this.remove()"></div>';
+  const srcOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?viaCDN(d.ph,w):U(id)(w)};
+  const directOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?d.ph:DIRECT(id)(w)};
+  const pic=(i,w,cls,extra)=>'<div class="ph'+(cls?" "+cls:"")+'"'+(extra||"")+'><img loading="'+(i<2?"eager":"lazy")+'" alt="" src="'+esc(srcOf(i,w))+'" data-d="'+esc(directOf(i,w))+'" onerror="if(this.dataset.f)this.remove();else{this.dataset.f=1;this.src=this.dataset.d}"></div>';
   const bn=brandName(d.n);
   const pool=K.h.concat((HEADT[K.mod]||HEADT.book).map(t=>t.replace(/\{W\}/g,bn.word)));
   const head=pool[Math.floor(R()*pool.length)];
