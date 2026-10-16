@@ -118,6 +118,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink);outline:none}
 .contacts code{font-family:var(--f-mono);font-size:12.5px}
 .contacts a.c:hover{border-color:var(--ink)}
 .verify{font-size:13px;color:var(--muted)}
+.sitebox{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1px dashed var(--line);border-radius:10px;padding:10px 12px}
+.sitebox.found{border-style:solid;border-color:var(--accent);background:var(--hilite)}
+.sitebox a{color:var(--accent);font-weight:600}
+.pill.site{background:var(--sunk);color:var(--muted)}
 .verify a{color:var(--accent);font-weight:500}
 
 .grid2{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;align-items:start}
@@ -1125,7 +1129,8 @@ function sessionStorageSafe(k){try{const v=sessionStorage.getItem(k);sessionStor
 function bootTool(){
 const $=s=>document.querySelector(s);
 const store={get(k,d){try{const v=localStorage.getItem("bz:"+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem("bz:"+k,JSON.stringify(v))}catch(e){}}};
-const ST={new:"Не трогал",sent:"Написал",replied:"Ответили",client:"Клиент",no:"Отказ"};
+const ST={new:"Не трогал",sent:"Написал",replied:"Ответили",client:"Клиент",no:"Отказ",site:"Есть сайт"};
+let sites=store.get("sites",{});
 const STYLE_NAMES=THEMES.map(t=>t.name);
 const defStyle=l=>pickTheme(kkOf(l.tag,l.niche,l.name),hashStr(l.name+"|"+(l.addr||"")));
 let prof=Object.assign({n:"",w:"",tg:"",e:"",price:"15000",days:"5",lang:"ru",k2:""},store.get("profile",{}));
@@ -1147,7 +1152,7 @@ $("#app").innerHTML=
  '<section class="card leads"><div class="lhead"><div class="lrow"><div class="seg" role="group" aria-label="Теплота">'+
    '<button data-f="all" aria-pressed="true">Все</button><button data-f="hot" aria-pressed="false">Горячие</button><button data-f="warm" aria-pressed="false">Тёплые</button></div>'+
    '<select id="stf" aria-label="Статус"><option value="">Любой статус</option>'+Object.keys(ST).map(k=>'<option value="'+k+'">'+ST[k]+'</option>').join("")+'</select></div>'+
-   '<div class="lrow"><input type="text" id="q" placeholder="Поиск по названию или улице" aria-label="Поиск" style="flex:1"><button class="btn sm" id="csv" title="Скачать список" aria-label="Скачать CSV">'+ico("dl")+'</button></div></div>'+
+   '<div class="lrow"><input type="text" id="q" placeholder="Поиск по названию или улице" aria-label="Поиск" style="flex:1"><button class="btn sm" id="chk" title="Найти сайты у бизнесов в списке">Проверить сайты</button><button class="btn sm" id="csv" title="Скачать список" aria-label="Скачать CSV">'+ico("dl")+'</button></div></div>'+
   '<ul class="list" id="list" role="listbox" aria-label="Бизнесы"></ul></section>'+
 '</aside><main class="main"><section class="card mapcard"><div id="map"></div><div class="maplegend"><span><i class="dot hot"></i>горячий</span><span><i class="dot warm"></i>тёплый</span><span><i class="dot cold"></i>холодный</span></div></section>'+
  '<section class="card" id="detail"></section></main></div>'+
@@ -1423,10 +1428,10 @@ function drawMarkers(fit){
 
 /* ---------- render ---------- */
 const stOf=id=>statuses[id]||"new";
-function visible(){const q=$("#q").value.trim().toLowerCase(),sf=$("#stf").value;return leads.filter(l=>(filt==="all"||l.temp===filt)&&(!sf||stOf(l.id)===sf)&&(!q||(l.name+" "+l.addr+" "+l.kind).toLowerCase().includes(q)))}
+function visible(){const q=$("#q").value.trim().toLowerCase(),sf=$("#stf").value;return leads.filter(l=>(filt==="all"||l.temp===filt)&&(sf?stOf(l.id)===sf:stOf(l.id)!=="site")&&(!q||(l.name+" "+l.addr+" "+l.kind).toLowerCase().includes(q)))}
 function renderStats(){
-  const hot=leads.filter(l=>l.temp==="hot").length,sent=leads.filter(l=>["sent","replied","client"].includes(stOf(l.id))).length,rep=leads.filter(l=>["replied","client"].includes(stOf(l.id))).length,cl=leads.filter(l=>stOf(l.id)==="client").length;
-  $("#stats").innerHTML=leads.length?'<span class="stat"><b>'+leads.length+'</b>без сайта</span><span class="stat hot"><b>'+hot+'</b>горячих</span><span class="stat"><b>'+sent+'</b>написал</span><span class="stat"><b>'+rep+'</b>ответили</span><span class="stat"><b>'+cl+'</b>клиентов</span>':'';
+  const live=leads.filter(l=>stOf(l.id)!=="site"),withSite=leads.length-live.length;const hot=live.filter(l=>l.temp==="hot").length,sent=leads.filter(l=>["sent","replied","client"].includes(stOf(l.id))).length,rep=leads.filter(l=>["replied","client"].includes(stOf(l.id))).length,cl=leads.filter(l=>stOf(l.id)==="client").length;
+  $("#stats").innerHTML=leads.length?'<span class="stat"><b>'+live.length+'</b>без сайта</span>'+(withSite?'<span class="stat"><b>'+withSite+'</b>с сайтом</span>':'')+'<span class="stat hot"><b>'+hot+'</b>горячих</span><span class="stat"><b>'+sent+'</b>написал</span><span class="stat"><b>'+rep+'</b>ответили</span><span class="stat"><b>'+cl+'</b>клиентов</span>':'';
 }
 function renderList(){
   const v=visible(),ul=$("#list");
@@ -1477,8 +1482,8 @@ async function renderDetail(){
    '<div class="phead"><div style="min-width:0"><h2>'+esc(l.name)+'</h2><div class="meta"><span>'+esc(l.kind)+'</span>'+(l.addr?'<span>'+esc(l.addr)+'</span>':'')+(l.tags.opening_hours?'<span>'+esc(hoursLine(l.tags.opening_hours,"ru"))+'</span>':'')+'</div>'+
     '<div class="why">'+(l.why.length?l.why.map(w=>'<span class="ok">'+w+'</span>').join(""):'<span>контактов нет, ищите вручную</span>')+'</div></div>'+
     '<div class="statusbar" role="group" aria-label="Статус">'+Object.keys(ST).map(k=>'<button class="btn" data-st="'+k+'" aria-pressed="'+(k===s)+'">'+ST[k]+'</button>').join("")+'</div></div>'+
-   '<div class="contacts">'+(l.phone?'<a class="c" href="'+esc(telHref(l.phone))+'">'+ico("phone")+'<code>'+esc(l.phone.split(/[;,]/)[0])+'</code></a>':'')+(l.email?'<span class="c">'+ico("mail")+'<code>'+esc(l.email)+'</code></span>':'')+(insta?'<a class="c" href="'+esc(insta)+'" target="_blank" rel="noopener">Instagram</a>':'')+(fb?'<a class="c" href="'+esc(fb)+'" target="_blank" rel="noopener">Facebook</a>':'')+(l.vk?'<a class="c" href="'+esc(l.vk)+'" target="_blank" rel="noopener">ВКонтакте</a>':'')+(l.tgc?'<a class="c" href="'+esc(l.tgc)+'" target="_blank" rel="noopener">Telegram</a>':'')+(l.dg?'<a class="c" href="https://2gis.ru/firm/'+esc(l.dg)+'" target="_blank" rel="noopener">Карточка в 2ГИС</a>':'')+
-    (isDemo?'':(l.unk?'<span class="verify">Есть ли у них сайт, видно в карточке 2ГИС. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">проверьте в Google</a></span>':'<span class="verify">Сначала убедитесь, что сайта точно нет: <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a></span>'))+'</div>'+
+   '<div class="contacts">'+(l.phone?'<a class="c" href="'+esc(telHref(l.phone))+'">'+ico("phone")+'<code>'+esc(l.phone.split(/[;,]/)[0])+'</code></a>':'')+(l.email?'<span class="c">'+ico("mail")+'<code>'+esc(l.email)+'</code></span>':'')+(insta?'<a class="c" href="'+esc(insta)+'" target="_blank" rel="noopener">Instagram</a>':'')+(fb?'<a class="c" href="'+esc(fb)+'" target="_blank" rel="noopener">Facebook</a>':'')+(l.vk?'<a class="c" href="'+esc(l.vk)+'" target="_blank" rel="noopener">ВКонтакте</a>':'')+(l.tgc?'<a class="c" href="'+esc(l.tgc)+'" target="_blank" rel="noopener">Telegram</a>':'')+(l.dg?'<a class="c" href="https://2gis.ru/firm/'+esc(l.dg)+'" target="_blank" rel="noopener">Карточка в 2ГИС</a>':'<a class="c" href="https://2gis.ru/search/'+encodeURIComponent(l.name+' '+(cityLabel||''))+'" target="_blank" rel="noopener">Найти в 2ГИС</a><a class="c" href="https://yandex.ru/maps/?text='+encodeURIComponent(l.name+' '+(cityLabel||''))+'" target="_blank" rel="noopener">Яндекс Карты</a>')+
+    '</div>'+(isDemo?'':siteBox(l,google))+
    '<div class="grid2"><div><div class="phone"><iframe id="frame" title="Черновик сайта" src="'+esc(link)+'"></iframe></div>'+
      '<div class="under"><div class="styles" role="group" aria-label="Стиль">'+STYLE_NAMES.map((n,i)=>'<button class="btn sm" data-style="'+i+'" aria-pressed="'+(i===curSt)+'">'+n+'</button>').join("")+'</div></div>'+
      '<div class="under"><a class="btn sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ico("ext")+'Открыть сайт</a><button class="btn sm" id="cpLink">'+ico("copy")+'Ссылка</button></div></div>'+
@@ -1496,6 +1501,37 @@ async function renderDetail(){
   $("#cpMsg").onclick=()=>copy($("#msg").value,"Сообщение скопировано",mark);
   $("#cpLink").onclick=()=>copy(link,"Ссылка на сайт скопирована");
   const nb=$("#nudgeBtn");if(nb)nb.onclick=openProfile;
+  const fs=$("#findSite");if(fs)fs.onclick=async()=>{fs.disabled=true;fs.textContent="Ищу сайт…";await checkSite(l);if(selId===l.id)renderDetail()};
+  const ns=$("#notSite");if(ns)ns.onclick=()=>{sites[l.id]={found:false,manual:true,at:Date.now()};store.set("sites",sites);if(stOf(l.id)==="site")setStatus(l.id,"new",true);renderDetail()};
+}
+function siteBox(l,google){
+  const r=sites[l.id];
+  if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">совпало: '+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
+  if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':'Сайт не нашёлся ни по домену, ни в поиске.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
+  return'<div class="sitebox"><button class="btn sm dark" id="findSite">Найти сайт</button><span class="verify">Проверю домены по названию и поиск. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">вручную в Google</a>.</span></div>';
+}
+async function checkSite(l){
+  try{
+    const r=await fetch("/api/findsite",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:l.name,city:cityLabel,phone:l.phone,addr:l.addr,niche:kkOf(l.tag,l.niche,l.name)})});
+    if(r.status===429){toast("Слишком много проверок подряд, подождите минуту");return null}
+    if(!r.ok)throw new Error(r.status);
+    const j=await r.json();
+    sites[l.id]={found:!!j.found,url:j.url||"",why:j.why||[],at:Date.now()};store.set("sites",sites);
+    if(j.found&&["new"].includes(stOf(l.id)))setStatus(l.id,"site",true);
+    return j;
+  }catch(e){toast("Проверка не удалась. Если вы открыли файл с компьютера, она работает только на сайте bezsaita.netlify.app");return null}
+}
+let checking=false;
+async function checkAll(){
+  if(checking){checking=false;return}
+  const todo=visible().filter(l=>!sites[l.id]&&stOf(l.id)==="new").slice(0,60);
+  if(!todo.length){toast("Все бизнесы в списке уже проверены");return}
+  checking=true;const btn=$("#chk"),total=todo.length;let done=0,found=0;
+  const upd=()=>{btn.textContent=checking?"Стоп ("+done+"/"+total+")":"Проверить сайты";prog((checking?'<span class="spin"></span>':'')+'Проверка сайтов: '+done+' из '+total+', нашлось с сайтом: '+found+'.')};
+  upd();
+  const worker=async()=>{while(checking&&todo.length){const l=todo.shift();const j=await checkSite(l);done++;if(j&&j.found)found++;upd();renderStats();renderList()}};
+  await Promise.all([worker(),worker(),worker()]);
+  checking=false;upd();renderDetail();
 }
 function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;store.set("statuses",statuses);renderStats();renderList();
   document.querySelectorAll("[data-st]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.st===(statuses[id]||"new"))));if(!quiet)toast("Статус: "+ST[s])}
@@ -1518,6 +1554,7 @@ $("#list").addEventListener("click",e=>{const li=e.target.closest(".lead");if(li
 $("#list").addEventListener("keydown",e=>{const li=e.target.closest(".lead");if(!li)return;
   if(e.key==="Enter"||e.key===" "){e.preventDefault();select(li.dataset.id)}
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const n=e.key==="ArrowDown"?li.nextElementSibling:li.previousElementSibling;if(n&&n.dataset.id){select(n.dataset.id);const m=document.querySelector('.lead[data-id="'+CSS.escape(n.dataset.id)+'"]');m&&m.focus()}}});
+$("#chk").onclick=()=>{if(isDemo){toast("На примере проверка не работает: это выдуманные компании");return}if(!leads.length){toast("Сначала найдите бизнесы");return}checkAll()};
 $("#csv").onclick=()=>{
   if(!leads.length){toast("Сначала найдите бизнесы");return}
   const rows=[["Название","Тип","Адрес","Телефон","Email","Instagram","Часы","Теплота","Статус","OSM"]].concat(leads.map(l=>[l.name,l.kind,l.addr,l.phone,l.email,l.insta,l.tags.opening_hours||"",{hot:"горячий",warm:"тёплый",cold:"холодный"}[l.temp],ST[stOf(l.id)],l.id]));
