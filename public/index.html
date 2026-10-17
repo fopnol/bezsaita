@@ -1173,16 +1173,19 @@ $("#app").innerHTML=
  '<div class="field full"><label for="pE">Email</label><input type="text" id="pE"></div>'+
  '<div class="field"><label for="pP">Цена сайта, ₽</label><input type="number" id="pP" min="0"></div>'+
  '<div class="field"><label for="pD">Срок, дней</label><input type="number" id="pD" min="1"></div>'+
-  '<div class="field full"><label for="pK">Ключ API 2ГИС (необязательно)</label><input type="text" id="pK" placeholder="Вставьте ключ с platform.2gis.ru" autocomplete="off"><small style="color:var(--muted)">С ключом поиск идёт по базе 2ГИС, без него по OpenStreetMap. Ключ хранится только в этом браузере.</small></div></div>'+
+  '<div class="field full"><label for="pK">Ключ API 2ГИС (необязательно)</label><input type="text" id="pK" placeholder="Вставьте ключ с platform.2gis.ru" autocomplete="off"><small style="color:var(--muted)">С ключом поиск идёт по базе 2ГИС, без него по OpenStreetMap. Ключ хранится только в этом браузере.</small></div>'+
+ '<div class="field"><label for="pY">Yandex Search API: ключ (необязательно)</label><input type="text" id="pY" placeholder="AQVN…" autocomplete="off"></div>'+
+ '<div class="field"><label for="pF">ID каталога Yandex Cloud</label><input type="text" id="pF" placeholder="b1g…" autocomplete="off"></div>'+
+ '<div class="field full"><small style="color:var(--muted)">С ключом Яндекса проверка сайтов идёт через поиск Яндекса: в разы точнее, около 0,5 ₽ за бизнес. Без ключа — подбор доменов и бесплатный поиск.</small></div></div>'+
  '<div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn primary" id="psave" value="ok">Сохранить</button></div></form></dialog>';
 
 /* ---------- profile ---------- */
 function openProfile(){
-  $("#pN").value=prof.n;$("#pW").value=prof.w;$("#pT").value=prof.tg;$("#pE").value=prof.e;$("#pP").value=prof.price;$("#pD").value=prof.days;$("#pK").value=prof.k2||"";
+  $("#pN").value=prof.n;$("#pW").value=prof.w;$("#pT").value=prof.tg;$("#pE").value=prof.e;$("#pP").value=prof.price;$("#pD").value=prof.days;$("#pK").value=prof.k2||"";$("#pY").value=prof.ys||"";$("#pF").value=prof.yf||"";
   $("#dlg").showModal();
 }
 $("#profBtn").onclick=openProfile;
-$("#psave").onclick=()=>{prof={n:$("#pN").value.trim(),w:$("#pW").value.trim(),tg:$("#pT").value.trim(),e:$("#pE").value.trim(),price:$("#pP").value||"15000",rub:true,days:$("#pD").value||"5",lang:"ru",k2:$("#pK").value.replace(/\s+/g,"")};store.set("profile",prof);toast("Профиль сохранён");renderSource();renderDetail()};
+$("#psave").onclick=()=>{prof={n:$("#pN").value.trim(),w:$("#pW").value.trim(),tg:$("#pT").value.trim(),e:$("#pE").value.trim(),price:$("#pP").value||"15000",rub:true,days:$("#pD").value||"5",lang:"ru",k2:$("#pK").value.replace(/\s+/g,""),ys:$("#pY").value.trim(),yf:$("#pF").value.trim()};store.set("profile",prof);toast("Профиль сохранён");renderSource();renderDetail()};
 
 /* ---------- search ---------- */
 const OVERPASS=[
@@ -1350,7 +1353,7 @@ $("#sform").addEventListener("submit",async e=>{
   e.preventDefault();if(busy)return;
   const city=$("#city").value.trim();if(city.length<2){$("#city").focus();return}
   if(!NICHES.some(n=>nicheOn[n.id])){prog("Выберите хотя бы одну нишу.",true);return}
-  busy=true;$("#go").disabled=true;store.set("city",city);
+  checking=false;runId++;busy=true;$("#go").disabled=true;store.set("city",city);
   const t0=Date.now();let tick;const sec=()=>Math.round((Date.now()-t0)/1000);
   try{
     let raw,label,note="";
@@ -1372,8 +1375,14 @@ $("#sform").addEventListener("submit",async e=>{
     if(!list.length){prog("Не нашлось подходящих заведений в «"+esc(label)+"». Добавьте ниши или уточните название города.",true);return}
     leads=list;isDemo=false;cityLabel=label;selId=null;showN=200;filt="all";syncSeg();
     store.set("last",{city:cityLabel,data:raw});
-    prog(esc(cityLabel)+(list[0].unk?': найдено '+list.length:': без сайта '+list.length)+', горячих '+list.filter(l=>l.temp==="hot").length+'.'+esc(note));
+    const head=esc(cityLabel)+': найдено '+list.length+'. ';
+    prog(head+esc(note));
     renderAll(true);
+    setTimeout(async()=>{
+      prog(head+'<span class="spin"></span>Сверяю с OpenStreetMap…');
+      const o=prof.k2?await osmCrossCheck(list):0;
+      checkAll(true,head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':''));
+    },50);
   }catch(err){
     clearInterval(tick);
     const det=Array.isArray(err)?err.join("; "):String(err&&err.message||err);
@@ -1517,31 +1526,54 @@ async function renderDetail(){
 function siteBox(l,google){
   const r=sites[l.id];
   if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">совпало: '+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
-  if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':'Сайт не нашёлся ни по домену, ни в поиске.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
+  if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':r.engine==="yandex"?'Сайт не нашёлся ни по домену, ни в поиске Яндекса.':'Сайт не нашёлся по домену и в бесплатном поиске. С ключом Яндекса в профиле проверка точнее.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
   return'<div class="sitebox"><button class="btn sm dark" id="findSite">Найти сайт</button><span class="verify">Проверю домены по названию и поиск. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">вручную в Google</a>.</span></div>';
 }
 async function checkSite(l){
   try{
-    const r=await fetch("/api/findsite",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:l.name,city:cityLabel,phone:l.phone,addr:l.addr,niche:kkOf(l.tag,l.niche,l.name)})});
+    const r=await fetch("/api/findsite",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:l.name,city:cityLabel,phone:l.phone,addr:l.addr,niche:kkOf(l.tag,l.niche,l.name),ykey:prof.ys||undefined,yfolder:prof.yf||undefined})});
     if(r.status===429){toast("Слишком много проверок подряд, подождите минуту");return null}
     if(!r.ok)throw new Error(r.status);
     const j=await r.json();
-    sites[l.id]={found:!!j.found,url:j.url||"",why:j.why||[],at:Date.now()};store.set("sites",sites);
+    if(j.searchError&&!checkSite.warned){checkSite.warned=true;toast("Поиск Яндекса не сработал: "+j.searchError+". Проверьте ключ и ID каталога в профиле")}
+    sites[l.id]={found:!!j.found,url:j.url||"",why:j.why||[],engine:j.engine||"",at:Date.now()};store.set("sites",sites);
     if(j.found&&["new"].includes(stOf(l.id)))setStatus(l.id,"site",true);
     return j;
   }catch(e){toast("Проверка не удалась. Если вы открыли файл с компьютера, она работает только на сайте bezsaita.netlify.app");return null}
 }
-let checking=false;
-async function checkAll(){
+let checking=false,runId=0;
+async function checkAll(auto,head){
   if(checking){checking=false;return}
-  const todo=visible().filter(l=>!sites[l.id]&&stOf(l.id)==="new").slice(0,60);
-  if(!todo.length){toast("Все бизнесы в списке уже проверены");return}
-  checking=true;const btn=$("#chk"),total=todo.length;let done=0,found=0;
-  const upd=()=>{btn.textContent=checking?"Стоп ("+done+"/"+total+")":"Проверить сайты";prog((checking?'<span class="spin"></span>':'')+'Проверка сайтов: '+done+' из '+total+', нашлось с сайтом: '+found+'.')};
+  const pool=auto?leads:visible();
+  const todo=pool.filter(l=>!sites[l.id]&&stOf(l.id)==="new").slice(0,auto?200:60);
+  if(!todo.length){if(!auto)toast("Все бизнесы в списке уже проверены");return}
+  checking=true;const my=++runId,btn=$("#chk"),total=todo.length;let done=0,found=0;head=head||"";
+  const upd=()=>{btn.textContent=checking?"Стоп ("+done+"/"+total+")":"Проверить сайты";prog(head+(checking?'<span class="spin"></span>':'')+'Проверяю, есть ли у них сайт: '+done+' из '+total+', с сайтом: '+found+(checking?'. Можно смотреть список, он обновляется сам.':'. Бизнесы с сайтом убраны из списка (фильтр «Есть сайт»).'))};
   upd();
-  const worker=async()=>{while(checking&&todo.length){const l=todo.shift();const j=await checkSite(l);done++;if(j&&j.found)found++;upd();renderStats();renderList()}};
-  await Promise.all([worker(),worker(),worker()]);
+  const worker=async()=>{while(checking&&my===runId&&todo.length){const l=todo.shift();const j=await checkSite(l);if(my!==runId)return;done++;if(j&&j.found)found++;upd();renderStats();renderList();if(j&&j.found&&selId===l.id)renderDetail()}};
+  await Promise.all([worker(),worker(),worker(),worker()]);
+  if(my!==runId)return;
   checking=false;upd();renderDetail();
+}
+/* Cross-check with OpenStreetMap: many businesses already have their website tagged there. */
+function nameKey(n){const f=x=>String(x||"").toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9]/g,"");const k=f(brandName(n).word);return k.length>=3?k:f(n)}
+async function osmCrossCheck(list){
+  const pts=list.filter(l=>l.lat!=null);if(!pts.length)return 0;
+  const la=pts.map(l=>l.lat),lo=pts.map(l=>l.lon);
+  const bb=[Math.min(...la)-.01,Math.min(...lo)-.015,Math.max(...la)+.01,Math.max(...lo)+.015].map(x=>x.toFixed(4)).join(",");
+  let json;try{json=await overpass('[out:json][timeout:60];(nwr["name"]["website"]('+bb+');nwr["name"]["contact:website"]('+bb+'););out tags center 5000;')}catch(e){return 0}
+  const idx={};for(const e of json.elements||[]){const t=e.tags||{};const k=nameKey(t.name||"");if(k.length<3)continue;const c=e.center||e;(idx[k]||(idx[k]=[])).push({url:t.website||t["contact:website"],lat:c.lat,lon:c.lon})}
+  let n=0;
+  for(const l of list){
+    if(sites[l.id]||stOf(l.id)!=="new")continue;
+    const c=idx[nameKey(l.name)];if(!c)continue;
+    const m=c.find(x=>l.lat==null||x.lat==null||Math.hypot((x.lat-l.lat)*111,(x.lon-l.lon)*111*Math.cos(l.lat*Math.PI/180))<0.5);
+    if(!m)continue;
+    const url=/^https?:/.test(m.url)?m.url:"https://"+m.url;
+    sites[l.id]={found:true,url,why:["указан в OpenStreetMap"],engine:"osm",at:Date.now()};statuses[l.id]="site";n++;
+  }
+  if(n){store.set("sites",sites);store.set("statuses",statuses);renderStats();renderList()}
+  return n;
 }
 function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;store.set("statuses",statuses);renderStats();renderList();
   document.querySelectorAll("[data-st]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.st===(statuses[id]||"new"))));if(!quiet)toast("Статус: "+ST[s])}
