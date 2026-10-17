@@ -9,7 +9,7 @@ import { domainToASCII } from "node:url";
 export const config = {
   path: "/api/findsite",
   method: ["GET", "POST"],
-  rateLimit: { windowLimit: 90, windowSize: 60, aggregateBy: ["ip", "domain"] },
+  rateLimit: { windowLimit: 150, windowSize: 60, aggregateBy: ["ip", "domain"] },
 };
 
 const AGGREGATORS = /(^|\.)(2gis|yandex|ya|google|vk|vkontakte|ok|instagram|facebook|t|telegram|youtube|wikipedia|zoon|flamp|yell|avito|tripadvisor|restoclub|afisha|spr|orgpage|rusprofile|list-org|sbis|checko|zachestnyibiznes|cataloxy|yp|spravker|gde|infodoctor|prodoctorov|napopravku|beauty\.?com|youdo|profi|uslugio|dikidi|yclients|booksy|duckduckgo|bing|mail|rambler|dzen|tiktok|pinterest|whatsapp|wa|apple|maps|fresha|hh|superjob|irecommend|otzovik|otzyvru|2gis-otzyvy|zoon-otzyvy|bizzone|rubrikator|kartaslov|kontakty|mapcarta|nominatim|openstreetmap|wikimapia|foursquare|tutu|booking|ostrovok|sutochno|cian|domclick)\.[a-zа-я.]+$/i;
@@ -88,13 +88,41 @@ function verify(html, ctx) {
   if (brandHit) why.push("название");
   if (ctx.city && text.includes(ctx.city)) why.push("город");
   if (ctx.street && text.includes(ctx.street)) why.push("адрес");
-  const ok = why.includes("телефон") || (brandHit && (why.includes("город") || why.includes("адрес")));
+  const domainHit = ctx.host && ctx.brandTr && ctx.brandTr.length >= 4 && ctx.host.replace(/[^a-z0-9]/g, "").includes(ctx.brandTr);
+  if (domainHit && brandHit) why.push("домен");
+  const ok = why.includes("телефон") || (brandHit && (why.includes("город") || why.includes("адрес") || domainHit));
   return ok ? why : null;
 }
 
+/* Yandex Search API (official, paid per request): used when the caller passes its own API key. */
+async function yandexLinks(q, key, folder, dbg) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 9000);
+  try {
+    const r = await fetch("https://searchapi.api.cloud.yandex.net/v2/web/search", {
+      method: "POST", signal: ctl.signal,
+      headers: { "content-type": "application/json", authorization: "Api-Key " + key },
+      body: JSON.stringify({
+        query: { searchType: "SEARCH_TYPE_RU", queryText: q.slice(0, 400), familyMode: "FAMILY_MODE_NONE" },
+        groupSpec: { groupMode: "GROUP_MODE_DEEP", groupsOnPage: "10", docsInGroup: "1" },
+        maxPassages: "1", folderId: folder, responseFormat: "FORMAT_XML", l10n: "LOCALIZATION_RU",
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.rawData) { dbg.yandex = "ошибка: " + (j.message || r.status); return { links: [], error: j.message || ("HTTP " + r.status) }; }
+    const xml = Buffer.from(j.rawData, "base64").toString("utf8");
+    const err = xml.match(/<error[^>]*>([^<]*)<\/error>/);
+    if (err) { dbg.yandex = "ошибка: " + err[1]; return { links: [], error: err[1] }; }
+    const links = [...xml.matchAll(/<url>([^<]+)<\/url>/g)].map((m) => m[1].replace(/&amp;/g, "&"));
+    dbg.yandex = links.length;
+    return { links };
+  } catch (e) { dbg.yandex = "нет ответа"; return { links: [], error: "Яндекс не ответил" }; }
+  finally { clearTimeout(t); }
+}
+
 /* Web search (best effort): result links from the HTML pages of two search engines. */
-async function searchLinks(q, dbg) {
-  const links = [];
+async function searchLinks(q, dbg, pre) {
+  const links = pre ? [...pre] : [];
+  if (!pre) {
   const ddg = await fetchText("https://html.duckduckgo.com/html/?kl=ru-ru&q=" + encodeURIComponent(q), 7000);
   if (ddg) for (const m of ddg.html.matchAll(/uddg=([^&"']+)/g)) { try { links.push(decodeURIComponent(m[1])); } catch {} }
   dbg.ddg = ddg ? links.length : "нет ответа";
@@ -104,6 +132,7 @@ async function searchLinks(q, dbg) {
     if (bing) for (const m of bing.html.matchAll(/<h2[^>]*>\s*<a[^>]+href="(https?:\/\/[^"]+)"/g)) links.push(m[1].replace(/&amp;/g, "&"));
     dbg.bing = bing ? links.length - n0 : "нет ответа";
   }
+  }
   const seen = new Set(), out = [];
   for (let u of links) {
     // Bing wraps results as bing.com/ck/a?...&u=a1<base64url of the real URL>
@@ -111,7 +140,7 @@ async function searchLinks(q, dbg) {
     const host = hostOf(u);
     if (!host || AGGREGATORS.test(host) || seen.has(host)) continue;
     seen.add(host); out.push("https://" + host + "/");
-    if (out.length >= 4) break;
+    if (out.length >= 5) break;
   }
   return { out, searched: !!(links.length) };
 }
@@ -128,6 +157,7 @@ export default async (req) => {
     city: (() => { const c = norm(city); return c.length > 5 ? c.slice(0, -2) : c; })(), street: norm(String(b.addr || "").replace(/,?\s*\d.*$/, "")).replace(/^(улица|ул\.?|проспект|пр-т|переулок|пер\.?)\s+/, "").trim().slice(0, 40),
     phoneRe: phoneRegex(b.phone),
   };
+  ctx.brandTr = translit(brandWords(name).join(""));
   if (ctx.street.length < 4) ctx.street = "";
 
   const tried = new Set();
@@ -137,7 +167,7 @@ export default async (req) => {
     if (!page && url.startsWith("https://")) page = await fetchText(url.replace("https://", "http://"));
     (dbg.pages ||= []).push(host + (page ? "" : " (не открылся)"));
     if (!page) return null;
-    const why = verify(page.html, ctx);
+    const why = verify(page.html, { ...ctx, host: hostOf(page.url || url) });
     return why ? { found: true, url: "https://" + hostOf(page.url || url), how, why, debug: b.debug ? dbg : undefined } : null;
   };
 
@@ -148,9 +178,12 @@ export default async (req) => {
   for (const res of await Promise.all(live.slice(0, 6).map((d) => check("https://" + d + "/", "domain")))) if (res) return Response.json(res);
 
   // 2. Web search
-  const { out, searched } = await searchLinks([name, city].filter(Boolean).join(" "), dbg);
+  const q = [name, city].filter(Boolean).join(" ");
+  let pre = null, searchError = null;
+  if (b.ykey && b.yfolder) { const y = await yandexLinks(q, String(b.ykey).trim(), String(b.yfolder).trim(), dbg); searchError = y.error || null; if (!y.error) pre = y.links; }
+  const { out, searched } = await searchLinks(q, dbg, pre);
   dbg.searchSites = out;
   for (const res of await Promise.all(out.map((u) => check(u, "search")))) if (res) return Response.json(res);
 
-  return Response.json({ found: false, checkedDomains: cands.length, searched, checkedPages: tried.size, debug: b.debug ? dbg : undefined });
+  return Response.json({ found: false, checkedDomains: cands.length, searched, engine: pre ? "yandex" : "free", searchError, checkedPages: tried.size, debug: b.debug ? dbg : undefined });
 };
