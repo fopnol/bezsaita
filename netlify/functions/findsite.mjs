@@ -8,7 +8,7 @@ import { domainToASCII } from "node:url";
 
 export const config = {
   path: "/api/findsite",
-  method: ["POST"],
+  method: ["GET", "POST"],
   rateLimit: { windowLimit: 90, windowSize: 60, aggregateBy: ["ip", "domain"] },
 };
 
@@ -93,13 +93,16 @@ function verify(html, ctx) {
 }
 
 /* Web search (best effort): result links from the HTML pages of two search engines. */
-async function searchLinks(q) {
+async function searchLinks(q, dbg) {
   const links = [];
   const ddg = await fetchText("https://html.duckduckgo.com/html/?kl=ru-ru&q=" + encodeURIComponent(q), 7000);
   if (ddg) for (const m of ddg.html.matchAll(/uddg=([^&"']+)/g)) { try { links.push(decodeURIComponent(m[1])); } catch {} }
+  dbg.ddg = ddg ? links.length : "нет ответа";
   if (links.length < 3) {
+    const n0 = links.length;
     const bing = await fetchText("https://www.bing.com/search?setlang=ru&cc=ru&q=" + encodeURIComponent(q), 7000);
     if (bing) for (const m of bing.html.matchAll(/<h2[^>]*>\s*<a[^>]+href="(https?:\/\/[^"]+)"/g)) links.push(m[1].replace(/&amp;/g, "&"));
+    dbg.bing = bing ? links.length - n0 : "нет ответа";
   }
   const seen = new Set(), out = [];
   for (const u of links) {
@@ -113,7 +116,9 @@ async function searchLinks(q) {
 
 export default async (req) => {
   let b;
-  try { b = await req.json(); } catch { return Response.json({ error: "bad request" }, { status: 400 }); }
+  if (req.method === "GET") b = Object.fromEntries(new URL(req.url).searchParams);
+  else { try { b = await req.json(); } catch { return Response.json({ error: "bad request" }, { status: 400 }); } }
+  const dbg = {};
   const name = String(b.name || "").slice(0, 120).trim(), city = String(b.city || "").slice(0, 60).trim();
   if (name.length < 2) return Response.json({ error: "name required" }, { status: 400 });
   const ctx = {
@@ -126,20 +131,24 @@ export default async (req) => {
   const tried = new Set();
   const check = async (url, how) => {
     const host = hostOf(url); if (!host || tried.has(host)) return null; tried.add(host);
-    const page = await fetchText(url);
+    let page = await fetchText(url);
+    if (!page && url.startsWith("https://")) page = await fetchText(url.replace("https://", "http://"));
+    (dbg.pages ||= []).push(host + (page ? "" : " (не открылся)"));
     if (!page) return null;
     const why = verify(page.html, ctx);
-    return why ? { found: true, url: "https://" + hostOf(page.url || url), how, why } : null;
+    return why ? { found: true, url: "https://" + hostOf(page.url || url), how, why, debug: b.debug ? dbg : undefined } : null;
   };
 
   // 1. Likely domains that exist
   const cands = domainCandidates(name, city, String(b.niche || ""));
   const live = (await Promise.all(cands.map(async (d) => ((await exists(d)) ? d : null)))).filter(Boolean);
+  dbg.domains = live;
   for (const res of await Promise.all(live.slice(0, 6).map((d) => check("https://" + d + "/", "domain")))) if (res) return Response.json(res);
 
   // 2. Web search
-  const { out, searched } = await searchLinks([name, city].filter(Boolean).join(" "));
+  const { out, searched } = await searchLinks([name, city].filter(Boolean).join(" "), dbg);
+  dbg.searchSites = out;
   for (const res of await Promise.all(out.map((u) => check(u, "search")))) if (res) return Response.json(res);
 
-  return Response.json({ found: false, checkedDomains: cands.length, searched, checkedPages: tried.size });
+  return Response.json({ found: false, checkedDomains: cands.length, searched, checkedPages: tried.size, debug: b.debug ? dbg : undefined });
 };
