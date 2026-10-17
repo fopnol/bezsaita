@@ -105,7 +105,9 @@ async function searchLinks(q, dbg) {
     dbg.bing = bing ? links.length - n0 : "нет ответа";
   }
   const seen = new Set(), out = [];
-  for (const u of links) {
+  for (let u of links) {
+    // Bing wraps results as bing.com/ck/a?...&u=a1<base64url of the real URL>
+    if (/bing\.com\/ck\//.test(u)) { const m = u.match(/[?&]u=a1([^&]+)/); if (!m) continue; try { u = Buffer.from(m[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"); } catch { continue; } }
     const host = hostOf(u);
     if (!host || AGGREGATORS.test(host) || seen.has(host)) continue;
     seen.add(host); out.push("https://" + host + "/");
