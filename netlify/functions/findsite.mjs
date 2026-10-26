@@ -119,30 +119,16 @@ async function yandexLinks(q, key, folder, dbg) {
   finally { clearTimeout(t); }
 }
 
-/* Web search (best effort): result links from the HTML pages of two search engines. */
-async function searchLinks(q, dbg, pre) {
-  const links = pre ? [...pre] : [];
-  if (!pre) {
-  const ddg = await fetchText("https://html.duckduckgo.com/html/?kl=ru-ru&q=" + encodeURIComponent(q), 7000);
-  if (ddg) for (const m of ddg.html.matchAll(/uddg=([^&"']+)/g)) { try { links.push(decodeURIComponent(m[1])); } catch {} }
-  dbg.ddg = ddg ? links.length : "нет ответа";
-  if (links.length < 3) {
-    const n0 = links.length;
-    const bing = await fetchText("https://www.bing.com/search?setlang=ru&cc=ru&q=" + encodeURIComponent(q), 7000);
-    if (bing) for (const m of bing.html.matchAll(/<h2[^>]*>\s*<a[^>]+href="(https?:\/\/[^"]+)"/g)) links.push(m[1].replace(/&amp;/g, "&"));
-    dbg.bing = bing ? links.length - n0 : "нет ответа";
-  }
-  }
+/* Keep only real result sites: drop maps, directories and social networks. */
+function siteLinks(links) {
   const seen = new Set(), out = [];
-  for (let u of links) {
-    // Bing wraps results as bing.com/ck/a?...&u=a1<base64url of the real URL>
-    if (/bing\.com\/ck\//.test(u)) { const m = u.match(/[?&]u=a1([^&]+)/); if (!m) continue; try { u = Buffer.from(m[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"); } catch { continue; } }
+  for (const u of links) {
     const host = hostOf(u);
     if (!host || AGGREGATORS.test(host) || seen.has(host)) continue;
     seen.add(host); out.push("https://" + host + "/");
     if (out.length >= 5) break;
   }
-  return { out, searched: !!(links.length) };
+  return out;
 }
 
 export default async (req) => {
@@ -177,13 +163,18 @@ export default async (req) => {
   dbg.domains = live;
   for (const res of await Promise.all(live.slice(0, 6).map((d) => check("https://" + d + "/", "domain")))) if (res) return Response.json(res);
 
-  // 2. Web search
-  const q = [name, city].filter(Boolean).join(" ");
-  let pre = null, searchError = null;
-  if (b.ykey && b.yfolder) { const y = await yandexLinks(q, String(b.ykey).trim(), String(b.yfolder).trim(), dbg); searchError = y.error || null; if (!y.error) pre = y.links; }
-  const { out, searched } = await searchLinks(q, dbg, pre);
-  dbg.searchSites = out;
-  for (const res of await Promise.all(out.map((u) => check(u, "search")))) if (res) return Response.json(res);
+  // 2. Yandex Search API, only with the caller's own key.
+  //    Free search engines are not used: from a server they either block requests or return spam.
+  let engine = "domains", searchError = null;
+  if (b.ykey && b.yfolder) {
+    const y = await yandexLinks([name, city].filter(Boolean).join(" "), String(b.ykey).trim(), String(b.yfolder).trim(), dbg);
+    searchError = y.error || null;
+    if (!y.error) {
+      engine = "yandex";
+      const out = siteLinks(y.links); dbg.searchSites = out;
+      for (const res of await Promise.all(out.map((u) => check(u, "search")))) if (res) return Response.json(res);
+    }
+  }
 
-  return Response.json({ found: false, checkedDomains: cands.length, searched, engine: pre ? "yandex" : "free", searchError, checkedPages: tried.size, debug: b.debug ? dbg : undefined });
+  return Response.json({ found: false, checkedDomains: cands.length, engine, searchError, checkedPages: tried.size, debug: b.debug ? dbg : undefined });
 };

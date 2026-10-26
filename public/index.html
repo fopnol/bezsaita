@@ -1177,7 +1177,7 @@ $("#app").innerHTML=
   '<div class="field full"><label for="pK">Ключ API 2ГИС (необязательно)</label><input type="text" id="pK" placeholder="Вставьте ключ с platform.2gis.ru" autocomplete="off"><small style="color:var(--muted)">С ключом поиск идёт по базе 2ГИС, без него по OpenStreetMap. Ключ хранится только в этом браузере.</small></div>'+
  '<div class="field"><label for="pY">Yandex Search API: ключ (необязательно)</label><input type="text" id="pY" placeholder="AQVN…" autocomplete="off"></div>'+
  '<div class="field"><label for="pF">ID каталога Yandex Cloud</label><input type="text" id="pF" placeholder="b1g…" autocomplete="off"></div>'+
- '<div class="field full"><small style="color:var(--muted)">С ключом Яндекса проверка сайтов идёт через поиск Яндекса: в разы точнее, около 0,5 ₽ за бизнес. Без ключа — подбор доменов и бесплатный поиск.</small></div></div>'+
+ '<div class="field full"><small style="color:var(--muted)">С ключом Яндекса проверка сайтов идёт через поиск Яндекса: в разы точнее, около 0,5 ₽ за бизнес. Без ключа — только проверка похожих доменов и OpenStreetMap, поэтому часть сайтов останется незамеченной.</small></div></div>'+
  '<div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn primary" id="psave" value="ok">Сохранить</button></div></form></dialog>';
 
 /* ---------- profile ---------- */
@@ -1530,8 +1530,8 @@ function vkHref(l){const sc=vkScreen(l.vk);return sc?"https://vk.me/"+sc:"https:
 function siteBox(l,google){
   const r=sites[l.id];
   if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">совпало: '+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
-  if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':r.engine==="yandex"?'Сайт не нашёлся ни по домену, ни в поиске Яндекса.':'Сайт не нашёлся по домену и в бесплатном поиске. С ключом Яндекса в профиле проверка точнее.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
-  return'<div class="sitebox"><button class="btn sm dark" id="findSite">Найти сайт</button><span class="verify">Проверю домены по названию и поиск. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">вручную в Google</a>.</span></div>';
+  if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':r.engine==="yandex"?'Сайт не нашёлся ни по домену, ни в поиске Яндекса.':'Похожих доменов с их сайтом нет, но без поиска это не гарантия. С ключом Яндекса в профиле проверка точная.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
+  return'<div class="sitebox"><button class="btn sm dark" id="findSite">Найти сайт</button><span class="verify">Проверю похожие домены'+(prof.ys?' и поиск Яндекса':'')+'. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">вручную в Google</a>.</span></div>';
 }
 async function checkSite(l){
   try{
