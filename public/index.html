@@ -305,7 +305,8 @@ function telHref(p){const d=String(p||"").split(/[;,]/)[0].replace(/[^\d+]/g,"")
    ============================================================ */
 /* Photos go through our own domain (Netlify Image CDN), so they load even where the photo stock site is blocked or slow. */
 const DIRECT=id=>w=>"https://images.unsplash.com/photo-"+id+"?auto=format&fit=crop&w="+w+"&q=72";
-const viaCDN=(url,w)=>/^https?:/.test(location.origin)?"/.netlify/images?url="+encodeURIComponent(url)+"&w="+w+"&q=72":url;
+const ON_NETLIFY=/netlify\.app$/.test(location.hostname);
+const viaCDN=(url,w)=>ON_NETLIFY?"/.netlify/images?url="+encodeURIComponent(url)+"&w="+w+"&q=72":url;
 const U=id=>w=>viaCDN(DIRECT(id)(w),w);
 const PH={
   barber:["1585747860715-2ba37e788b70","1503951914875-452162b0f3f1","1599351431202-1e0f0137899a","1621605815971-fbc98d665033","1605497788044-5a32c7078486","1517832606299-7ae9b720a186","1621645582931-d1d3e6564943","1647140655214-e4a2d914971f","1567894340315-735d7c361db0","1493256338651-d82f7acb2b38","1657105052497-f996284ffff8","1536520002442-39764a41e987"],
@@ -1389,7 +1390,8 @@ $("#sform").addEventListener("submit",async e=>{
     setTimeout(async()=>{
       prog(head+'<span class="spin"></span>Сверяю с OpenStreetMap…');
       const o=prof.k2?await osmCrossCheck(list):0;
-      checkAll(true,head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':''));
+      if(ON_NETLIFY)checkAll(true,head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':''));
+      else prog(head+(o?'В OpenStreetMap нашлись сайты у '+o+' — они убраны из списка. ':'')+esc(note));
     },50);
   }catch(err){
     clearInterval(tick);
@@ -1534,12 +1536,14 @@ async function renderDetail(){
 function vkScreen(v){const m=String(v||"").match(/vk\.(?:com|ru)\/([A-Za-z0-9_.]+)/i);return m&&!/^(search|feed|im|share)$/i.test(m[1])?m[1]:""}
 function vkHref(l){const sc=vkScreen(l.vk);return sc?"https://vk.me/"+sc:"https://vk.com/search?c%5Bsection%5D=communities&c%5Bq%5D="+encodeURIComponent(l.name+" "+(cityLabel||""))}
 function siteBox(l,google){
+  if(!ON_NETLIFY&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Перед тем как писать, проверьте, нет ли у них сайта: <a href="'+esc(google)+'" target="_blank" rel="noopener">поиск в Google</a>.</span></div>';
   const r=sites[l.id];
   if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">совпало: '+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
   if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':r.engine==="yandex"?'Сайт не нашёлся ни по домену, ни в поиске Яндекса.':'Похожих доменов с их сайтом нет, но без поиска это не гарантия. С ключом Яндекса в профиле проверка точная.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
   return'<div class="sitebox"><button class="btn sm dark" id="findSite">Найти сайт</button><span class="verify">Проверю похожие домены'+(prof.ys?' и поиск Яндекса':'')+'. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">вручную в Google</a>.</span></div>';
 }
 async function checkSite(l){
+  if(!ON_NETLIFY)return null;
   try{
     const r=await fetch("/api/findsite",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:l.name,city:cityLabel,phone:l.phone,addr:l.addr,niche:kkOf(l.tag,l.niche,l.name),ykey:prof.ys||undefined,yfolder:prof.yf||undefined})});
     if(r.status===429){toast("Слишком много проверок подряд, подождите минуту");return null}
@@ -1611,6 +1615,7 @@ $("#list").addEventListener("click",e=>{const li=e.target.closest(".lead");if(li
 $("#list").addEventListener("keydown",e=>{const li=e.target.closest(".lead");if(!li)return;
   if(e.key==="Enter"||e.key===" "){e.preventDefault();select(li.dataset.id)}
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const n=e.key==="ArrowDown"?li.nextElementSibling:li.previousElementSibling;if(n&&n.dataset.id){select(n.dataset.id);const m=document.querySelector('.lead[data-id="'+CSS.escape(n.dataset.id)+'"]');m&&m.focus()}}});
+if(!ON_NETLIFY){const c=$("#chk");if(c)c.hidden=true}
 $("#chk").onclick=()=>{if(isDemo){toast("На примере проверка не работает: это выдуманные компании");return}if(!leads.length){toast("Сначала найдите бизнесы");return}checkAll()};
 $("#csv").onclick=()=>{
   if(!leads.length){toast("Сначала найдите бизнесы");return}
