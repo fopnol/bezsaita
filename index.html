@@ -1612,7 +1612,7 @@ async function vkLogin(){
   const ch=b64url(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(ver)));
   store.set("vkpk",{ver,st});
   const u=new URL("https://id.vk.com/authorize");
-  Object.entries({response_type:"code",client_id:cid,redirect_uri:vkRedirect(),state:st,code_challenge:ch,code_challenge_method:"S256",scope:"vkid.personal_info groups"}).forEach(([k,v])=>u.searchParams.set(k,v));
+  Object.entries({response_type:"code",client_id:cid,redirect_uri:vkRedirect(),state:st,code_challenge:ch,code_challenge_method:"S256",scope:"vkid.personal_info"}).forEach(([k,v])=>u.searchParams.set(k,v));
   location.href=u.toString();
 }
 async function vkTokenReq(params){
