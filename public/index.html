@@ -47,8 +47,16 @@ body.tool :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .btn[disabled]{opacity:.5;pointer-events:none}
 .btn svg{width:16px;height:16px;flex:none}
 
-.shell{max-width:1440px;margin:0 auto;padding-inline:20px;padding-block:18px 60px;display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:18px;align-items:start}
-.rail{display:grid;gap:14px;position:sticky;top:76px;max-height:calc(100vh - 92px);grid-template-rows:auto minmax(0,1fr)}
+.shell{max-width:1440px;margin:0 auto;padding-inline:20px;padding-block:16px 40px;display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);gap:16px;align-items:start}
+.rail{display:grid;position:sticky;top:calc(var(--top,120px) + 16px);height:calc(100vh - var(--top,120px) - 32px);grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
+.rail .mapcard{grid-row:2;min-height:0;position:relative}
+.rail .mapcard #map{position:absolute;inset:0;height:auto}
+.toolbar{max-width:1440px;margin:0 auto;padding:8px 0 2px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px}
+.toolbar .progress{flex:1;min-width:240px}
+.appbar .cityrow{flex:1;max-width:460px;display:flex;gap:8px}
+.count{font-size:13px;color:var(--muted);margin-right:auto}
+.lead .sub b{color:var(--ink);font-weight:600}
+@media (prefers-color-scheme:dark){.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);min-width:0}
 .search{padding:16px;display:grid;gap:12px}
 .search h1{font-family:var(--f-display);font-weight:500;font-size:19px;line-height:1.25;margin:0;text-wrap:balance}
@@ -156,7 +164,7 @@ dialog::backdrop{background:rgba(10,14,12,.45)}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;z-index:1000;box-shadow:0 10px 30px -10px rgba(0,0,0,.4)}
 
 @media (max-width:1100px){.grid2{grid-template-columns:minmax(0,1fr)}}
-@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr)}.rail{position:static;max-height:none}.list{max-height:380px}#map{height:240px}.steps{grid-template-columns:minmax(0,1fr)}.stats{margin-left:0;width:100%}}
+@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr)}.rail{position:static;height:auto;max-height:none}.rail .mapcard{height:320px}.list{max-height:420px}.appbar .cityrow{order:3;max-width:none;flex-basis:100%}.appbar{position:static}.stats .stat:nth-child(n+3){display:none}.stats{width:auto;margin-left:auto}.steps{grid-template-columns:minmax(0,1fr)}.stats{margin-left:0;width:100%}}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
 
 </style>
@@ -1153,20 +1161,19 @@ let styleOf=store.get("styles",{});
 let leads=[],cityLabel="",isDemo=false,selId=null,filt="all",channel="chat",showN=200,map=null,layer=null,markers={},busy=false;
 
 $("#app").innerHTML=
-'<header class="appbar"><div class="appbar-in"><div class="logo">Без<s>сайта</s></div><div class="stats" id="stats"></div>'+
- '<button class="btn sm ghost" id="profBtn">'+ico("user")+'Мой профиль</button></div></header>'+
-'<div class="shell"><aside class="rail">'+
- '<section class="card search"><h1>Бизнесы <em>без сайта</em> в любом городе</h1>'+
-  '<form class="cityrow" id="sform"><input type="text" id="city" placeholder="Город, например: Таллин" autocomplete="off" aria-label="Город"><button class="btn primary" id="go" type="submit">Найти</button></form>'+
-  '<div class="niches" id="niches">'+NICHES.map(n=>'<label class="chip"><input type="checkbox" data-n="'+n.id+'"'+(nicheOn[n.id]?" checked":"")+'><span>'+n.ru+'</span></label>').join("")+'</div>'+
-  '<div class="progress" id="prog"></div><div class="verify" id="srcline"></div></section>'+
- '<section class="card leads"><div class="lhead"><div class="lrow"><div class="seg" role="group" aria-label="Теплота">'+
-   '<button data-f="all" aria-pressed="true">Все</button><button data-f="hot" aria-pressed="false">Горячие</button><button data-f="warm" aria-pressed="false">Тёплые</button></div>'+
-   '<select id="stf" aria-label="Статус"><option value="">Любой статус</option>'+Object.keys(ST).map(k=>'<option value="'+k+'">'+ST[k]+'</option>').join("")+'</select></div>'+
-   '<div class="lrow"><input type="text" id="q" placeholder="Поиск по названию или улице" aria-label="Поиск" style="flex:1"><button class="btn sm" id="chk" title="Найти сайты у бизнесов в списке">Проверить сайты</button><button class="btn sm" id="csv" title="Скачать список" aria-label="Скачать CSV">'+ico("dl")+'</button></div></div>'+
-  '<ul class="list" id="list" role="listbox" aria-label="Бизнесы"></ul></section>'+
-'</aside><main class="main"><section class="card mapcard"><div id="map"></div><div class="maplegend"><span><i class="dot hot"></i>горячий</span><span><i class="dot warm"></i>тёплый</span><span><i class="dot cold"></i>холодный</span></div></section>'+
- '<section class="card" id="detail"></section></main></div>'+
+'<header class="appbar" id="appbar"><div class="appbar-in"><div class="logo">Без<s>сайта</s></div>'+
+ '<form class="cityrow" id="sform"><input type="text" id="city" placeholder="Город, например: Чебоксары" autocomplete="off" aria-label="Город"><button class="btn primary" id="go" type="submit">Найти</button></form>'+
+ '<div class="stats" id="stats"></div><button class="btn sm ghost" id="profBtn">'+ico("user")+'Профиль</button></div>'+
+ '<div class="toolbar"><div class="niches" id="niches">'+NICHES.map(n=>'<label class="chip"><input type="checkbox" data-n="'+n.id+'"'+(nicheOn[n.id]?" checked":"")+'><span>'+n.ru+'</span></label>').join("")+'</div>'+
+ '<div class="progress" id="prog"></div><div class="verify" id="srcline"></div></div></header>'+
+'<div class="shell"><aside class="rail card">'+
+ '<div class="lhead"><div class="lrow"><div class="seg view" role="group" aria-label="Вид"><button data-v="list" aria-pressed="true">Список</button><button data-v="map" aria-pressed="false">Карта</button></div>'+
+   '<div class="seg" role="group" aria-label="Теплота"><button data-f="all" aria-pressed="true">Все</button><button data-f="hot" aria-pressed="false">Горячие</button><button data-f="warm" aria-pressed="false">Тёплые</button></div></div>'+
+   '<div class="lrow"><input type="text" id="q" placeholder="Поиск по названию или улице" aria-label="Поиск" style="flex:1"><select id="stf" aria-label="Статус"><option value="">Любой статус</option>'+Object.keys(ST).map(k=>'<option value="'+k+'">'+ST[k]+'</option>').join("")+'</select></div>'+
+   '<div class="lrow"><span class="count" id="count"></span><button class="btn sm" id="chk" title="Найти сайты у бизнесов в списке">Проверить сайты</button><button class="btn sm" id="csv" title="Скачать список" aria-label="Скачать CSV">'+ico("dl")+'</button></div></div>'+
+ '<ul class="list" id="list" role="listbox" aria-label="Бизнесы"></ul>'+
+ '<div class="mapcard" hidden><div id="map"></div><div class="maplegend"><span><i class="dot hot"></i>горячий</span><span><i class="dot warm"></i>тёплый</span><span><i class="dot cold"></i>холодный</span></div></div>'+
+'</aside><main class="main"><section class="card" id="detail"></section></main></div>'+
 '<dialog id="dlg"><form method="dialog" class="dlg" id="pform"><h3>Мой профиль</h3><p>Эти данные попадут в сообщение и в плашку внизу каждого черновика сайта, чтобы владелец мог с вами связаться.</p>'+
  '<div class="fgrid"><div class="field full"><label for="pN">Имя</label><input type="text" id="pN"></div>'+
  '<div class="field"><label for="pW">WhatsApp (с кодом страны)</label><input type="tel" id="pW" placeholder="+371 2000 0000"></div>'+
@@ -1432,9 +1439,8 @@ function loadLeaflet(){return new Promise((res,rej)=>{if(window.L)return res();
   const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 async function initMap(){
   try{await loadLeaflet()}catch(e){$("#map").innerHTML='<div class="more">Карта не загрузилась, список работает.</div>';return}
-  const dark=matchMedia("(prefers-color-scheme: dark)").matches;
   map=L.map("map",{preferCanvas:true,zoomControl:true,attributionControl:true}).setView([54.5,24.5],4);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/"+(dark?"dark_all":"light_all")+"/{z}/{x}/{y}{r}.png",{maxZoom:19,subdomains:"abcd",attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'}).addTo(map);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
   layer=L.layerGroup().addTo(map);drawMarkers(true);
 }
 function colorOf(t){const cs=getComputedStyle(document.documentElement);return t==="hot"?cs.getPropertyValue("--accent").trim():t==="warm"?cs.getPropertyValue("--warm").trim():cs.getPropertyValue("--cold").trim()}
@@ -1454,10 +1460,10 @@ function renderStats(){
   $("#stats").innerHTML=leads.length?'<span class="stat"><b>'+live.length+'</b>без сайта</span>'+(withSite?'<span class="stat"><b>'+withSite+'</b>с сайтом</span>':'')+'<span class="stat hot"><b>'+hot+'</b>горячих</span><span class="stat"><b>'+sent+'</b>написал</span><span class="stat"><b>'+rep+'</b>ответили</span><span class="stat"><b>'+cl+'</b>клиентов</span>':'';
 }
 function renderList(){
-  const v=visible(),ul=$("#list");
+  const v=visible(),ul=$("#list");const cn=$("#count");if(cn)cn.textContent=leads.length?v.length+' в списке':'';
   if(!leads.length){ul.innerHTML='<li class="more">Введите город и нажмите «Найти».</li>';return}
   if(!v.length){ul.innerHTML='<li class="more">Под эти фильтры ничего нет.</li>';return}
-  ul.innerHTML=v.slice(0,showN).map(l=>{const s=stOf(l.id);return'<li class="lead" role="option" tabindex="0" data-id="'+esc(l.id)+'" aria-selected="'+(l.id===selId)+'"><i class="dot '+l.temp+'"></i><span class="nm">'+esc(l.name)+'</span><span class="pill '+s+'">'+ST[s]+'</span><span class="sub">'+esc(l.kind)+(l.addr?' · '+esc(l.addr):'')+'</span></li>'}).join("")+
+  ul.innerHTML=v.slice(0,showN).map(l=>{const s=stOf(l.id);return'<li class="lead" role="option" tabindex="0" data-id="'+esc(l.id)+'" aria-selected="'+(l.id===selId)+'"><i class="dot '+l.temp+'"></i><span class="nm">'+esc(l.name)+'</span><span class="pill '+s+'">'+ST[s]+'</span><span class="sub">'+(l.tags["dg:rating"]?'<b>★ '+esc(l.tags["dg:rating"])+'</b> · ':'')+esc(l.kind)+(l.addr?' · '+esc(l.addr):'')+'</span></li>'}).join("")+
    (v.length>showN?'<li class="more"><button class="btn sm" id="moreBtn">Показать ещё '+Math.min(200,v.length-showN)+' из '+(v.length-showN)+'</button></li>':'');
   const mb=$("#moreBtn");if(mb)mb.onclick=()=>{showN+=200;renderList()};
 }
@@ -1589,11 +1595,16 @@ function select(id,fromMap){selId=id;renderList();drawMarkers(false);renderDetai
   const l=leads.find(x=>x.id===id);if(map&&l&&l.lat!=null&&!fromMap)map.setView([l.lat,l.lon],Math.max(map.getZoom(),15));
   if(innerWidth<900)$("#detail").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});
   else{const li=document.querySelector('.lead[data-id="'+CSS.escape(id)+'"]');li&&li.scrollIntoView({block:"nearest"})}}
-function renderAll(fit){renderStats();renderList();renderDetail();$(".mapcard").hidden=isDemo||!leads.length;if(map&&!$(".mapcard").hidden)map.invalidateSize();drawMarkers(fit)}
-function syncSeg(){document.querySelectorAll(".seg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.f===filt)))}
+let view="list";
+function setView(v){view=v;document.querySelectorAll(".seg.view button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===v)));$("#list").hidden=v!=="list";$(".mapcard").hidden=v!=="map";if(v==="map"&&map){map.invalidateSize();drawMarkers(true)}}
+function syncTop(){const h=$("#appbar");if(h)document.documentElement.style.setProperty("--top",h.offsetHeight+"px")}
+function renderAll(fit){if(leads.length&&!leads.some(l=>l.id===selId)){const f=visible()[0];selId=f?f.id:null}renderStats();renderList();renderDetail();if(map&&view==="map")map.invalidateSize();drawMarkers(fit);syncTop()}
+function syncSeg(){document.querySelectorAll(".seg:not(.view) button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.f===filt)))}
 function loadDemo(){leads=enrich(DEMO);isDemo=true;cityLabel="";selId=leads[0].id;prog('Это выдуманные компании для примера. Введите свой город, чтобы найти настоящие.');renderAll(false)}
 
-document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{filt=b.dataset.f;syncSeg();showN=200;renderList();drawMarkers(false)});
+document.querySelectorAll(".seg.view button").forEach(b=>b.onclick=()=>setView(b.dataset.v));
+addEventListener("resize",syncTop);
+document.querySelectorAll(".seg:not(.view) button").forEach(b=>b.onclick=()=>{filt=b.dataset.f;syncSeg();showN=200;renderList();drawMarkers(false)});
 $("#q").addEventListener("input",()=>{showN=200;renderList();drawMarkers(false)});
 $("#stf").addEventListener("change",()=>{renderList();drawMarkers(false)});
 $("#list").addEventListener("click",e=>{const li=e.target.closest(".lead");if(li)select(li.dataset.id)});
