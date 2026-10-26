@@ -1184,17 +1184,20 @@ $("#app").innerHTML=
  '<div class="field"><label for="pD">Срок, дней</label><input type="number" id="pD" min="1"></div>'+
   '<div class="field full"><label for="pK">Ключ API 2ГИС (необязательно)</label><input type="text" id="pK" placeholder="Вставьте ключ с platform.2gis.ru" autocomplete="off"><small style="color:var(--muted)">С ключом поиск идёт по базе 2ГИС, без него по OpenStreetMap. Ключ хранится только в этом браузере.</small></div>'+
  '<div class="field"><label for="pY">Yandex Search API: ключ (необязательно)</label><input type="text" id="pY" placeholder="AQVN…" autocomplete="off"></div>'+
+ '<div class="field"><label for="pV">ID приложения VK</label><input type="text" id="pV" inputmode="numeric" placeholder="например, 54123456" autocomplete="off"></div>'+
+ '<div class="field"><label>Вход через ВК</label><button type="button" class="btn" id="vkLogin">Войти через ВК</button></div>'+
+ '<div class="field full"><small id="vkStat" style="color:var(--muted)"></small></div>'+
  '<div class="field"><label for="pF">ID каталога Yandex Cloud</label><input type="text" id="pF" placeholder="b1g…" autocomplete="off"></div>'+
  '<div class="field full"><small style="color:var(--muted)">С ключом Яндекса проверка сайтов идёт через поиск Яндекса: в разы точнее, около 0,5 ₽ за бизнес. Без ключа — только проверка похожих доменов и OpenStreetMap, поэтому часть сайтов останется незамеченной.</small></div></div>'+
  '<div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn primary" id="psave" value="ok">Сохранить</button></div></form></dialog>';
 
 /* ---------- profile ---------- */
 function openProfile(){
-  $("#pN").value=prof.n;$("#pW").value=prof.w;$("#pT").value=prof.tg;$("#pE").value=prof.e;$("#pP").value=prof.price;$("#pD").value=prof.days;$("#pK").value=prof.k2||"";$("#pY").value=prof.ys||"";$("#pF").value=prof.yf||"";
+  $("#pN").value=prof.n;$("#pW").value=prof.w;$("#pT").value=prof.tg;$("#pE").value=prof.e;$("#pP").value=prof.price;$("#pD").value=prof.days;$("#pK").value=prof.k2||"";$("#pY").value=prof.ys||"";$("#pF").value=prof.yf||"";$("#pV").value=prof.vkapp||"";$("#vkStat").textContent=vkTok?"Вход выполнен: парсер сам проверяет группы ВК.":"Вход не выполнен. Нужен ID приложения из кабинета VK ID для бизнеса.";
   $("#dlg").showModal();
 }
 $("#profBtn").onclick=openProfile;
-$("#psave").onclick=()=>{prof={n:$("#pN").value.trim(),w:$("#pW").value.trim(),tg:$("#pT").value.trim(),e:$("#pE").value.trim(),price:$("#pP").value||"15000",rub:true,days:$("#pD").value||"5",lang:"ru",k2:$("#pK").value.replace(/\s+/g,""),ys:$("#pY").value.trim(),yf:$("#pF").value.trim()};store.set("profile",prof);toast("Профиль сохранён");renderSource();renderDetail()};
+$("#psave").onclick=()=>{prof={n:$("#pN").value.trim(),w:$("#pW").value.trim(),tg:$("#pT").value.trim(),e:$("#pE").value.trim(),price:$("#pP").value||"15000",rub:true,days:$("#pD").value||"5",lang:"ru",k2:$("#pK").value.replace(/\s+/g,""),ys:$("#pY").value.trim(),yf:$("#pF").value.trim(),vkapp:$("#pV").value.trim()};store.set("profile",prof);toast("Профиль сохранён");renderSource();renderDetail()};
 
 /* ---------- search ---------- */
 const OVERPASS=[
@@ -1382,7 +1385,7 @@ $("#sform").addEventListener("submit",async e=>{
     clearInterval(tick);
     const list=enrich(raw);
     if(!list.length){prog("Не нашлось подходящих заведений в «"+esc(label)+"». Добавьте ниши или уточните название города.",true);return}
-    leads=list;isDemo=false;cityLabel=label;selId=null;showN=200;filt="all";syncSeg();
+    leads=list;applyVk();isDemo=false;cityLabel=label;selId=null;showN=200;filt="all";syncSeg();
     store.set("last",{city:cityLabel,data:raw});
     const head=esc(cityLabel)+': найдено '+list.length+'. ';
     prog(head+esc(note));
@@ -1390,8 +1393,10 @@ $("#sform").addEventListener("submit",async e=>{
     setTimeout(async()=>{
       prog(head+'<span class="spin"></span>Сверяю с OpenStreetMap…');
       const o=prof.k2?await osmCrossCheck(list):0;
-      if(ON_NETLIFY)checkAll(true,head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':''));
-      else prog(head+(o?'В OpenStreetMap нашлись сайты у '+o+' — они убраны из списка. ':'')+esc(note));
+      const h2=head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':'');
+      if(vkTok)await runVkCheck(true,h2);
+      if(ON_NETLIFY)checkAll(true,h2);
+      else if(!vkTok)prog(h2+esc(note)+' Войдите через ВК в профиле, и парсер будет сам проверять их группы.');
     },50);
   }catch(err){
     clearInterval(tick);
@@ -1536,6 +1541,9 @@ async function renderDetail(){
 function vkScreen(v){const m=String(v||"").match(/vk\.(?:com|ru)\/([A-Za-z0-9_.]+)/i);return m&&!/^(search|feed|im|share)$/i.test(m[1])?m[1]:""}
 function vkHref(l){const sc=vkScreen(l.vk);return sc?"https://vk.me/"+sc:"https://vk.com/search?c%5Bsection%5D=communities&c%5Bq%5D="+encodeURIComponent(l.name+" "+(cityLabel||""))}
 function siteBox(l,google){
+  const vi=vkinfo[l.id];
+  if(vi&&vi.url&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Нашлась их группа ВК: <a href="'+esc(vi.url)+'" target="_blank" rel="noopener">'+esc(vi.name||vi.url)+'</a>. Сайта в ней не указано.</span></div>';
+  if(vi&&vi.none&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Группу ВК с таким названием в этом городе не нашли. Можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span></div>';
   if(!ON_NETLIFY&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Перед тем как писать, проверьте, нет ли у них сайта: <a href="'+esc(google)+'" target="_blank" rel="noopener">поиск в Google</a>.</span></div>';
   const r=sites[l.id];
   if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">совпало: '+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
@@ -1589,6 +1597,145 @@ async function osmCrossCheck(list){
   if(n){store.set("sites",sites);store.set("statuses",statuses);renderStats();renderList()}
   return n;
 }
+/* ================= VK: login (VK ID, OAuth 2.1 + PKCE) and community check ================= */
+const VK_V="5.199";
+let vkTok=store.get("vk",null);           // {at, rt, exp, dev}
+let vkinfo=store.get("vkinfo",{});        // lead id -> {url, name, site} | {none:true}
+const b64url=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const rndStr=n=>{const a=new Uint8Array(n);crypto.getRandomValues(a);return b64url(a).slice(0,n)};
+const vkRedirect=()=>location.origin+location.pathname;
+async function vkLogin(){
+  const cid=String(prof.vkapp||"").trim();
+  if(!/^\d+$/.test(cid)){toast("Впишите ID приложения VK в профиле");return}
+  const ver=rndStr(64),st=rndStr(32);
+  const ch=b64url(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(ver)));
+  store.set("vkpk",{ver,st});
+  const u=new URL("https://id.vk.com/authorize");
+  Object.entries({response_type:"code",client_id:cid,redirect_uri:vkRedirect(),state:st,code_challenge:ch,code_challenge_method:"S256",scope:"vkid.personal_info groups"}).forEach(([k,v])=>u.searchParams.set(k,v));
+  location.href=u.toString();
+}
+async function vkTokenReq(params){
+  const r=await fetch("https://id.vk.com/oauth2/auth",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body:new URLSearchParams(params)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||!j.access_token)throw new Error(j.error_description||j.error||("HTTP "+r.status));
+  return j;
+}
+async function vkHandleReturn(){
+  const q=new URLSearchParams(location.search);const code=q.get("code");
+  if(!code)return;
+  const pk=store.get("vkpk",null);
+  history.replaceState(null,"",location.pathname+location.hash);
+  if(!pk||q.get("state")!==pk.st){toast("Вход через ВК не удался, попробуйте ещё раз");return}
+  try{
+    const dev=q.get("device_id")||"";
+    const j=await vkTokenReq({grant_type:"authorization_code",code_verifier:pk.ver,redirect_uri:vkRedirect(),code,client_id:prof.vkapp,device_id:dev,state:pk.st});
+    vkTok={at:j.access_token,rt:j.refresh_token,exp:Date.now()+((+j.expires_in||3600)-60)*1000,dev};
+    store.set("vk",vkTok);store.set("vkpk",null);
+    toast("Вход через ВК выполнен");renderSource();
+    if(leads.length&&!isDemo)runVkCheck(true);
+  }catch(e){toast("ВК не выдал доступ: "+e.message)}
+}
+async function vkAccess(){
+  if(!vkTok)return null;
+  if(Date.now()<vkTok.exp)return vkTok.at;
+  try{
+    const j=await vkTokenReq({grant_type:"refresh_token",refresh_token:vkTok.rt,client_id:prof.vkapp,device_id:vkTok.dev,state:rndStr(32)});
+    vkTok=Object.assign(vkTok,{at:j.access_token,rt:j.refresh_token||vkTok.rt,exp:Date.now()+((+j.expires_in||3600)-60)*1000});
+    store.set("vk",vkTok);return vkTok.at;
+  }catch(e){vkTok=null;store.set("vk",null);renderSource();toast("Вход через ВК устарел, войдите снова в профиле");return null}
+}
+let jsonpN=0;
+/* VK API does not allow cross-site fetch, but supports JSONP. */
+function vkCall(method,params){return new Promise(async(res,rej)=>{
+  const at=await vkAccess();if(!at)return rej(Object.assign(new Error("Нет входа через ВК"),{code:"auth"}));
+  const cb="__vk"+(++jsonpN)+"_"+Date.now();const s=document.createElement("script");
+  const u=new URL("https://api.vk.com/method/"+method);
+  Object.entries(Object.assign({},params,{access_token:at,v:VK_V,callback:cb})).forEach(([k,v])=>u.searchParams.set(k,v));
+  const t=setTimeout(()=>{cleanup();rej(new Error("ВК не ответил"))},15000);
+  function cleanup(){clearTimeout(t);try{delete window[cb]}catch(e){window[cb]=undefined}s.remove()}
+  window[cb]=d=>{cleanup();if(d&&d.error)rej(Object.assign(new Error(d.error.error_msg||"ошибка ВК"),{code:d.error.error_code}));else res(d.response)};
+  s.onerror=()=>{cleanup();rej(new Error("ВК недоступен"))};
+  s.src=u.toString();document.head.appendChild(s);
+})}
+const NOT_SITE=/(^|\.)(vk\.(com|ru|me|cc|link)|vkontakte\.ru|taplink\.(cc|at|ws|me)|linktr\.ee|t\.me|telegram\.(me|org)|wa\.me|whatsapp\.com|instagram\.com|facebook\.com|ok\.ru|youtube\.com|youtu\.be|tiktok\.com|2gis\.(ru|com)|yandex\.(ru|com)|ya\.(ru|cc)|clck\.ru|vk\.cc|avito\.ru|dikidi\.(net|ru|app)|yclients\.com|booksy\.com|hipolink\.(me|net)|mssg\.me|zoon\.ru|flamp\.ru|google\.com|goo\.gl|bit\.ly|ozon\.ru|wildberries\.ru|mail\.ru|gmail\.com|list\.ru|bk\.ru|inbox\.ru|rambler\.ru)$/i;
+function vkSitesOf(g){
+  const text=[g.site||"",g.description||"",g.status||""].join(" \n ");
+  const out=[];
+  for(const m of text.matchAll(/(?:https?:\/\/)?((?:[a-z0-9-]+\.)+(?:[a-z]{2,10}|рф))(\/[^\s,;)«»"]*)?/gi)){
+    const before=text[m.index-1]||"";if(before==="@")continue;
+    const host=m[1].toLowerCase().replace(/^www\./,"");
+    if(NOT_SITE.test(host)||/^\d+(\.\d+)+$/.test(host))continue;
+    if(!/\.(ru|рф|com|net|org|su|pro|site|online|store|shop|info|biz|io|me|by|kz|cc|art|studio|beauty|moscow|space|xyz|club|top|tech|website|center)$/i.test(host))continue;
+    if(!out.includes(host))out.push(host);
+  }
+  return out;
+}
+const vkNorm=s=>String(s||"").toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9]/g,"");
+function vkPick(l,groups){
+  const bk=nameKey(l.name),full=vkNorm(l.name);
+  const cityStem=vkNorm(cityLabel).slice(0,Math.max(4,vkNorm(cityLabel).length-2));
+  const street=vkNorm(String(l.addr||"").replace(/,?\s*\d.*$/,"").replace(/^(улица|ул\.?|проспект|пр-т|переулок|пер\.?|бульвар|шоссе)\s+/i,""));
+  let best=null,bs=0;
+  for(const g of groups){
+    if(!g||g.deactivated)continue;
+    const gn=vkNorm(g.name);let sc=0;
+    if(bk.length>=3&&(gn.includes(bk)||(gn.length>=4&&bk.includes(gn))))sc+=3;else if(full.length>=5&&gn.includes(full))sc+=3;else continue;
+    const gc=vkNorm(g.city&&g.city.title);const desc=vkNorm((g.description||"")+" "+(g.status||""));
+    if(gc&&cityStem&&gc.startsWith(cityStem))sc+=2;else if(cityStem&&desc.includes(cityStem))sc+=1;else if(gc)sc-=3;
+    if(street.length>=4&&desc.includes(street))sc+=2;
+    if(sc>bs){bs=sc;best=g}
+  }
+  return bs>=4?best:null;
+}
+async function vkCheckLead(l){
+  const brand=brandName(l.name).word;const q=(vkNorm(brand).length>=3?brand:l.name).slice(0,100);
+  const code='var r=API.groups.search({"q":'+JSON.stringify(q)+',"count":10});var ids=r.items@.id;if(ids.length==0){return [];}return API.groups.getById({"group_ids":ids,"fields":"site,description,city,status,screen_name"});';
+  const resp=await vkCall("execute",{code});
+  const groups=Array.isArray(resp)?resp:(resp&&resp.groups)||[];
+  const g=vkPick(l,groups);
+  if(!g){vkinfo[l.id]={none:true,at:Date.now()};return{found:false}}
+  const url="https://vk.com/"+(g.screen_name||("club"+g.id));
+  const s=vkSitesOf(g);
+  vkinfo[l.id]={url,name:g.name,site:s[0]||"",at:Date.now()};
+  if(s.length){
+    sites[l.id]={found:true,url:"https://"+s[0],why:["указан в группе ВК «"+g.name+"»"],engine:"vk",at:Date.now()};
+    if(stOf(l.id)==="new")statuses[l.id]="site";
+  }else if(!sites[l.id]||!sites[l.id].found){
+    sites[l.id]={found:false,engine:"vk",vk:url,at:Date.now()};
+  }
+  return{found:!!s.length,url};
+}
+function applyVk(){for(const l of leads){const v=vkinfo[l.id];if(v&&v.url&&!l.vk)l.vk=v.url}}
+let vkRun=0;
+async function runVkCheck(auto,head){
+  if(!vkTok){if(!auto)toast("Войдите через ВК в профиле, и парсер будет проверять группы сам");return}
+  const my=++vkRun;head=head||(cityLabel?esc(cityLabel)+': найдено '+leads.length+'. ':'');
+  const todo=leads.filter(l=>!vkinfo[l.id]&&stOf(l.id)==="new").slice(0,auto?250:400);
+  if(!todo.length){if(!auto)toast("Все бизнесы уже проверены через ВК");return}
+  const total=todo.length;let done=0,withSite=0,groups=0;
+  const btn=$("#chk");
+  const upd=fin=>{if(btn)btn.textContent=fin?"Проверить ВК":"Стоп ("+done+"/"+total+")";prog(head+(fin?'':'<span class="spin"></span>')+'Проверяю группы ВК: '+done+' из '+total+'. Нашлась группа: '+groups+', из них с сайтом: '+withSite+(fin?'. Бизнесы с сайтом убраны из списка (фильтр «Есть сайт»).':'. Список обновляется на ходу.'))};
+  upd(false);
+  for(const l of todo){
+    if(my!==vkRun)return;
+    try{
+      const r=await vkCheckLead(l);if(r.url)groups++;if(r.found)withSite++;
+      if(r.url&&!l.vk)l.vk=r.url;
+    }catch(e){
+      if((e.code===6||e.code===9)&&(l._vkRetry=(l._vkRetry||0)+1)<4){await new Promise(r=>setTimeout(r,1500));todo.push(l);continue}
+      if(e.code===5||e.code==="auth"){vkTok=null;store.set("vk",null);renderSource();prog(head+'Вход через ВК устарел. Откройте профиль и нажмите «Войти через ВК».',true);return}
+      if(e.code===15||e.code===27||e.code===28||e.code===30){prog(head+'ВК не разрешил поиск групп: '+esc(e.message)+'. Проверьте, что бизнес-аккаунт VK ID подтверждён.',true);return}
+      vkinfo[l.id]={none:true,err:String(e.message),at:Date.now()};
+    }
+    done++;
+    if(done%5===0||done===total){store.set("vkinfo",vkinfo);store.set("sites",sites);store.set("statuses",statuses);renderStats();renderList();if(l.id===selId)renderDetail()}
+    upd(false);
+    await new Promise(r=>setTimeout(r,380));
+  }
+  store.set("vkinfo",vkinfo);store.set("sites",sites);store.set("statuses",statuses);
+  upd(true);renderAll(false);
+}
+
 function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;store.set("statuses",statuses);renderStats();renderList();
   document.querySelectorAll("[data-st]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.st===(statuses[id]||"new"))));if(!quiet)toast("Статус: "+ST[s])}
 function copy(t,msg,after){const ok=()=>{toast(msg);after&&after()};
@@ -1615,8 +1762,11 @@ $("#list").addEventListener("click",e=>{const li=e.target.closest(".lead");if(li
 $("#list").addEventListener("keydown",e=>{const li=e.target.closest(".lead");if(!li)return;
   if(e.key==="Enter"||e.key===" "){e.preventDefault();select(li.dataset.id)}
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const n=e.key==="ArrowDown"?li.nextElementSibling:li.previousElementSibling;if(n&&n.dataset.id){select(n.dataset.id);const m=document.querySelector('.lead[data-id="'+CSS.escape(n.dataset.id)+'"]');m&&m.focus()}}});
-if(!ON_NETLIFY){const c=$("#chk");if(c)c.hidden=true}
-$("#chk").onclick=()=>{if(isDemo){toast("На примере проверка не работает: это выдуманные компании");return}if(!leads.length){toast("Сначала найдите бизнесы");return}checkAll()};
+{const c=$("#chk");if(c)c.textContent=ON_NETLIFY&&!vkTok?"Проверить сайты":"Проверить ВК"}
+$("#chk").onclick=()=>{if(isDemo){toast("На примере проверка не работает: это выдуманные компании");return}if(!leads.length){toast("Сначала найдите бизнесы");return}
+  if(vkTok){if(/^Стоп/.test($("#chk").textContent)){vkRun++;$("#chk").textContent="Проверить ВК";prog("Проверка остановлена.");return}runVkCheck(false);return}
+  if(ON_NETLIFY){checkAll();return}
+  toast("Войдите через ВК в профиле: тогда парсер сам проверит группы");openProfile()};
 $("#csv").onclick=()=>{
   if(!leads.length){toast("Сначала найдите бизнесы");return}
   const rows=[["Название","Тип","Адрес","Телефон","Email","Instagram","Часы","Теплота","Статус","OSM"]].concat(leads.map(l=>[l.name,l.kind,l.addr,l.phone,l.email,l.insta,l.tags.opening_hours||"",{hot:"горячий",warm:"тёплый",cold:"холодный"}[l.temp],ST[stOf(l.id)],l.id]));
@@ -1624,11 +1774,13 @@ $("#csv").onclick=()=>{
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="bezsaita-"+(cityLabel||"demo")+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 };
 
-function renderSource(){const el=$("#srcline");if(!el)return;el.innerHTML=prof.k2?'Ищем по 2ГИС. <a href="#" id="srcEdit">Изменить ключ</a>':'Ищем по OpenStreetMap. <a href="#" id="srcEdit">Подключить 2ГИС</a> — точнее для России';const a=$("#srcEdit");a.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pK").focus(),50)}}
+function renderSource(){const el=$("#srcline");if(!el)return;const vkl=vkTok?' · ВК подключён':' · <a href="#" id="vkSrc">Подключить ВК</a>';el.innerHTML=prof.k2?'Ищем по 2ГИС. <a href="#" id="srcEdit">Изменить ключ</a>':'Ищем по OpenStreetMap. <a href="#" id="srcEdit">Подключить 2ГИС</a> — точнее для России';el.innerHTML+=vkl;const a=$("#srcEdit");a.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pK").focus(),50)};const v=$("#vkSrc");if(v)v.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pV").focus(),50)};const c=$("#chk");if(c)c.textContent=ON_NETLIFY&&!vkTok?"Проверить сайты":"Проверить ВК"}
 renderSource();
 /* boot */
 const last=store.get("last",null);const c=store.get("city","");if(c)$("#city").value=c;
-if(last&&last.data&&last.data.length){leads=enrich(last.data);cityLabel=last.city;prog(esc(cityLabel)+': '+leads.length+' без сайта (из прошлого поиска).')}
+$("#vkLogin").onclick=()=>{prof.vkapp=$("#pV").value.trim();store.set("profile",prof);vkLogin()};
+vkHandleReturn();
+if(last&&last.data&&last.data.length){leads=enrich(last.data);applyVk();cityLabel=last.city;prog(esc(cityLabel)+': '+leads.length+' без сайта (из прошлого поиска).')}
 renderAll(true);initMap().then(()=>{renderAll(true)});
 }
 
