@@ -1154,6 +1154,7 @@ let sites=store.get("sites",{});
 const STYLE_NAMES=THEMES.map(t=>t.name);
 const defStyle=l=>pickTheme(kkOf(l.tag,l.niche,l.name),hashStr(l.name+"|"+(l.addr||"")));
 let prof=Object.assign({n:"",w:"",tg:"",e:"",price:"15000",days:"5",lang:"ru",k2:""},store.get("profile",{}));
+if(!/^\d+$/.test(String(prof.vkapp||"").trim()))prof.vkapp="54857009";
 prof.lang="ru";if(!prof.rub){if(!prof.price||+prof.price<2000)prof.price="15000";prof.rub=true;store.set("profile",prof)}
 const rub=v=>{const n=Math.round(+v||0);return n?n.toLocaleString("ru-RU").replace(/\u00a0/g," "):"…"};
 let nicheOn=store.get("niches",{beauty:true,food:true,auto:true,health:false,craft:true,shop:false});
