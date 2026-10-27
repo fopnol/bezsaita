@@ -183,6 +183,10 @@ body.tool [hidden]{display:none!important}
 .qbtns{flex-wrap:wrap;gap:8px}.qst{display:inline-flex;gap:6px;flex-wrap:wrap}.qst [aria-pressed=true]{background:var(--ink);color:var(--bg)}
 .qdel{margin-left:auto}
 .qempty{padding:28px;text-align:center;color:var(--muted)}
+.qrows{display:grid;gap:8px}
+.qrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;text-align:left;cursor:pointer;width:100%;font:inherit;color:inherit}
+.qrow:hover{border-color:var(--ink)}.qrn{display:grid;gap:2px;min-width:0}.qrn b{font-size:16px}
+#qDlg .qitem{display:grid;gap:10px}.qdtop{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;z-index:1000;box-shadow:0 10px 30px -10px rgba(0,0,0,.4)}
 
 @media (max-width:1100px){.grid2{grid-template-columns:minmax(0,1fr)}}
@@ -1256,7 +1260,8 @@ $("#app").innerHTML=
  '<div class="field"><label for="rW">WhatsApp клиента для заявок</label><input type="tel" id="rW" placeholder="+7 900 000-00-00"></div>'+
  '<div class="field"><label for="rT">или Telegram клиента</label><input type="text" id="rT" placeholder="@username"></div>'+
  '<div class="field full"><label for="rS">Адрес сайта (латиницей)</label><input type="text" id="rS"><small id="rStat" style="color:var(--muted)"></small></div>'+
- '</div><div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Закрыть</button><button type="button" class="btn" id="rSave">Сохранить</button><button type="button" class="btn" id="rPrev">Посмотреть</button><button type="button" class="btn" id="rDl">Скачать HTML</button><button type="button" class="btn primary" id="rPub">Опубликовать</button></div></form></dialog>';
+ '</div><div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Закрыть</button><button type="button" class="btn" id="rSave">Сохранить</button><button type="button" class="btn" id="rPrev">Посмотреть</button><button type="button" class="btn" id="rDl">Скачать HTML</button><button type="button" class="btn primary" id="rPub">Опубликовать</button></div></form></dialog>'+
+'<dialog id="qDlg" class="wide"><div class="dlg" id="qDlgBody"></div></dialog>';
 
 /* ---------- profile ---------- */
 function openProfile(){
@@ -2016,7 +2021,7 @@ async function syncNow(){
 function afterRemote(changed){
   let cityCh=false,selCh=false,qCh=false,qNew=0;
   for(const c of changed){const i=c.indexOf("\u0001"),key=c.slice(0,i),id=c.slice(i+1);if(key==="cities")cityCh=true;if(id===selId)selCh=true;if(key==="q"){qCh=true;const t=queue[id];if(t&&t.st==="new"&&t.by!==myName()&&!qSeen[id]){qNew++;qSeen[id]=1}}}
-  if(qCh){renderQBadge();if(mode==="queue"&&!qEditing())renderQueue()}
+  if(qCh){renderQBadge();if(mode==="queue"&&!qEditing()){renderQueue();if($("#qDlg").open)renderQDlg()}}
   if(qNew)toast("Новых сообщений на отправку: "+qNew+". Вкладка «Отправка»");
   applyVk();renderStats();renderList();drawMarkers(false);
   if(cityCh){renderCityPick();uploadCities()}
@@ -2170,7 +2175,7 @@ $("#rSave").onclick=()=>{readReal();toast("Сохранено")};
 /* ================= Outbox: messages queued for the friend, who sends them by hand ================= */
 let mode=store.get("mode","search"),qFilt="new",qSeen={};
 for(const id in queue)qSeen[id]=1;
-const qEditing=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest("#qview")&&/TEXTAREA|INPUT/.test(a.tagName))};
+const qEditing=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest("#qview,#qDlg")&&/TEXTAREA|INPUT/.test(a.tagName))};
 const Q_ST={new:"Ждёт отправки",sent:"Отправил",replied:"Ответили",client:"Клиент",no:"Отказ"};
 function vkNormUrl(u){u=String(u||"").trim();if(!u)return"";if(!/^https?:\/\//i.test(u))u="https://"+u.replace(/^\/+/,"");return u.replace(/^http:/i,"https:").replace(/\/\/(m\.)?vk\.ru\//i,"//vk.com/").replace(/\/\/m\.vk\.com\//i,"//vk.com/").replace(/[?#].*$/,"").replace(/\/+$/,"")}
 function vkChat(u){const sc=vkScreen(u);return sc?"https://vk.me/"+sc:u}
@@ -2195,6 +2200,7 @@ function setTaskSt(id,st){
   t.st=st;t.stBy=myName();t.at=Date.now();store.set("queue",queue);
   if(t.lead){if(st==="new"){if(statuses[t.lead]&&statuses[t.lead]!=="site"){delete statuses[t.lead];delete who[t.lead]}}else{statuses[t.lead]=st;who[t.lead]={n:myName(),s:st,at:Date.now()}}store.set("statuses",statuses);store.set("who",who);renderStats();renderList()}
   renderQBadge();renderQueue();
+  if(qOpenId===id&&$("#qDlg").open){if(st!=="new"){toast("«"+(t.name||"")+"»: "+Q_ST[st]);qNext(id)}else renderQDlg()}
 }
 const qAuto={};let qFillRun=0;
 function qLead(id,t){const x=t.ld||{name:t.name||""};return{id:x.id||("q/"+id),name:x.name||t.name||"Ваш бизнес",niche:x.niche||"other",tag:x.tag||"",addr:x.addr||"",phone:x.phone||"",email:"",
@@ -2210,8 +2216,31 @@ async function qFill(){
     if(my!==qFillRun)return;
     const txt=qMsg(l,link);if(qAuto[id]!==txt){qAuto[id]=txt;ch=true}
   }
-  if(ch&&mode==="queue"&&!qEditing())renderQueue(true);
+  if(ch&&mode==="queue"&&!qEditing()){renderQueue(true);if($("#qDlg").open)renderQDlg()}
 }
+const qMeta=t=>(t.city?esc(t.city)+' · ':'')+'добавил '+esc(t.by||"")+', '+ago(t.at)+(t.st!=="new"&&t.stBy?' · «'+Q_ST[t.st]+'»: '+esc(t.stBy):'');
+const qTitle=t=>esc(t.name||vkScreen(t.vk)||"Без названия");
+function qRow(t){return'<button type="button" class="card qrow" data-open="'+esc(t.id)+'"><span class="qrn"><b>'+qTitle(t)+'</b><span class="verify">'+qMeta(t)+'</span></span><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></button>'}
+function qCard(t){
+  const vk=t.vk||"",chat=vkChat(vk);
+  return'<div class="qitem" data-q="'+esc(t.id)+'"><div class="qhead"><div style="min-width:0"><b class="qname">'+qTitle(t)+'</b><div class="verify">'+qMeta(t)+'</div></div><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></div>'+
+    (vk?'<a class="verify qlink" href="'+esc(vk)+'" target="_blank" rel="noopener">'+esc(vk.replace(/^https:\/\//,""))+'</a>':'<span class="verify bad">Нет ссылки на ВК</span>')+
+    (t.text?'<small class="verify">Текст правили вручную. <a href="#" data-act="auto">Вернуть автоматический</a></small>':'<small class="verify">Текст составлен сам от имени «'+esc(myName())+'», со ссылкой на черновик сайта.</small>')+
+    '<textarea class="qtext" aria-label="Текст сообщения">'+esc(t.text||qAuto[t.id]||"Составляю текст…")+'</textarea>'+
+    '<div class="lrow qbtns">'+(vk?'<a class="btn primary" data-act="chat" href="'+esc(chat)+'" target="_blank" rel="noopener">'+ico("vk")+'Открыть чат ВК</a>':'')+'<button class="btn" data-act="copy" type="button">'+ico("copy")+'Скопировать текст</button></div>'+
+    '<div class="lrow qbtns"><span class="verify">Статус:</span><span class="qst">'+["sent","replied","client","no"].map(k=>'<button class="btn sm" type="button" data-st2="'+k+'" aria-pressed="'+(t.st===k)+'">'+Q_ST[k]+'</button>').join("")+(t.st!=="new"?'<button class="btn sm" type="button" data-st2="new">Вернуть в очередь</button>':'')+'</span>'+
+    '<button class="btn sm ghost qdel" data-act="del" type="button">Удалить</button></div></div>';
+}
+let qOpenId=null;
+const qNewIds=()=>Object.entries(queue).filter(([id,t])=>t.st==="new").sort((a,b)=>a[1].at-b[1].at).map(x=>x[0]);
+function renderQDlg(){
+  const dlg=$("#qDlg"),t=qOpenId&&queue[qOpenId];
+  if(!t){if(dlg.open)dlg.close();qOpenId=null;return}
+  const ids=qNewIds(),pos=ids.indexOf(qOpenId);
+  $("#qDlgBody").innerHTML='<div class="qdtop"><span class="verify">'+(pos>=0?'Ждёт отправки: '+(pos+1)+' из '+ids.length:Q_ST[t.st])+'</span><span class="lrow" style="gap:6px">'+(ids.length>1||(pos<0&&ids.length)?'<button class="btn sm" type="button" data-act="next">Следующий →</button>':'')+'<button class="btn sm" type="button" data-act="close" aria-label="Закрыть">✕</button></span></div>'+qCard(Object.assign({id:qOpenId},t));
+}
+function openQ(id){qOpenId=id;renderQDlg();const d=$("#qDlg");if(!d.open)d.showModal()}
+function qNext(after){const ids=qNewIds().filter(x=>x!==after);if(!ids.length){qOpenId=null;renderQDlg();toast("Очередь пуста: всё отправлено");return}const i=qNewIds().indexOf(after);const nx=ids.find(x=>qNewIds().indexOf(x)>i)||ids[0];openQ(nx)}
 function renderQueue(noFill){
   const box=$("#qview");if(!box)return;if(!noFill)qFill();
   const all=Object.entries(queue).map(([id,t])=>Object.assign({id},t));
@@ -2220,16 +2249,11 @@ function renderQueue(noFill){
   box.innerHTML='<div class="qtop"><h2>Отправка</h2><div class="mseg" role="group" aria-label="Фильтр"><button data-qf="new" aria-pressed="'+(qFilt==="new")+'">Ждут отправки · '+nNew+'</button><button data-qf="done" aria-pressed="'+(qFilt==="done")+'">Отправленные · '+nDone+'</button><button data-qf="all" aria-pressed="'+(qFilt==="all")+'">Все</button></div></div>'+
    '<p class="verify" style="margin:0">Сюда попадают сообщения для отправки: ссылка на группу ВК и готовый текст. «Открыть чат ВК» копирует текст и открывает переписку с группой: вставьте текст (Ctrl+V), отправьте и нажмите «Отправил».'+(ghOn()?'':' <b>Сейчас очередь видна только в этом браузере.</b> <a href="#" id="qGh">Подключите общую базу</a>, чтобы её видел друг.')+'</p>'+
    '<details class="card qadd" id="qadd"><summary>Добавить вручную</summary><div class="fgrid" style="margin-top:12px"><div class="field full"><label for="qVk">Ссылка на группу ВК</label><input type="text" id="qVk" placeholder="https://vk.com/…"></div><div class="field full"><label for="qName">Название бизнеса (необязательно)</label><input type="text" id="qName"></div><div class="field full"><label for="qText">Текст для клиента</label><textarea id="qText" rows="6" placeholder="Можно оставить пустым: текст составится сам от имени того, кто отправляет, со ссылкой на черновик сайта"></textarea></div></div><div class="lrow" style="margin-top:10px"><button class="btn primary" id="qAddBtn" type="button">Добавить</button></div></details>'+
-   (list.length?list.map(t=>{const vk=t.vk||"",chat=vkChat(vk);return'<article class="card qitem" data-q="'+esc(t.id)+'"><div class="qhead"><div style="min-width:0"><b class="qname">'+esc(t.name||vkScreen(vk)||"Без названия")+'</b><div class="verify">'+(t.city?esc(t.city)+' · ':'')+'добавил '+esc(t.by||"")+', '+ago(t.at)+(t.st!=="new"&&t.stBy?' · «'+Q_ST[t.st]+'»: '+esc(t.stBy):'')+'</div></div><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></div>'+
-      (vk?'<a class="verify qlink" href="'+esc(vk)+'" target="_blank" rel="noopener">'+esc(vk.replace(/^https:\/\//,""))+'</a>':'<span class="verify bad">Нет ссылки на ВК</span>')+
-      (t.text?'<small class="verify">Текст правили вручную. <a href="#" data-act="auto">Вернуть автоматический</a></small>':'<small class="verify">Текст составлен сам от имени «'+esc(myName())+'», со ссылкой на черновик сайта.</small>')+
-      '<textarea class="qtext" aria-label="Текст сообщения" data-auto="'+(t.text?"":"1")+'">'+esc(t.text||qAuto[t.id]||"Составляю текст…")+'</textarea>'+
-      '<div class="lrow qbtns">'+(vk?'<a class="btn primary" data-act="chat" href="'+esc(chat)+'" target="_blank" rel="noopener">'+ico("vk")+'Открыть чат ВК</a>':'')+'<button class="btn" data-act="copy" type="button">'+ico("copy")+'Скопировать текст</button>'+
-      '<span class="qst">'+["sent","replied","client","no"].map(k=>'<button class="btn sm" type="button" data-st2="'+k+'" aria-pressed="'+(t.st===k)+'">'+Q_ST[k]+'</button>').join("")+(t.st!=="new"?'<button class="btn sm" type="button" data-st2="new">Вернуть в очередь</button>':'')+'</span>'+
-      '<button class="btn sm ghost qdel" data-act="del" type="button">Удалить</button></div></article>'}).join(""):'<div class="card qempty">'+(qFilt==="new"?'Всё отправлено. Новые сообщения появятся здесь, когда их добавят из карточки бизнеса кнопкой «В очередь на отправку».':'Здесь пока пусто.')+'</div>');
+   (list.length?'<div class="qrows">'+list.map(qRow).join("")+'</div>':'<div class="card qempty">'+(qFilt==="new"?'Всё отправлено. Новые сообщения появятся здесь, когда их добавят из карточки бизнеса кнопкой «В очередь на отправку».':'Здесь пока пусто.')+'</div>');
   const g=$("#qGh");if(g)g.onclick=e=>{e.preventDefault();openProfile();setTimeout(()=>$("#pG").focus(),50)};
 }
-$("#qview").addEventListener("click",e=>{
+function qClick(e){
+  const op=e.target.closest("[data-open]");if(op){openQ(op.dataset.open);return}
   const f=e.target.closest("[data-qf]");if(f){qFilt=f.dataset.qf;renderQueue();return}
   if(e.target.closest("#qAddBtn")){
     const vk=vkNormUrl($("#qVk").value),text=$("#qText").value.trim(),name=$("#qName").value.trim();
@@ -2239,16 +2263,22 @@ $("#qview").addEventListener("click",e=>{
     const ll=pend&&leads.find(x=>x.id===pend.lead);if(ll&&!ll.vk)ll.vk=vk;
     const auto=pend&&text===String(pend.text||"").trim()?"":text;
     addTask({vk,text:pend?(text===""?"":auto):text,name:name||(pend&&pend.ld.name)||"",city:pend?cityLabel:"",lead:pend?pend.lead:undefined,ld:pend?pend.ld:{name}});if(pend)markQueued(pend.lead);qFilt="new";renderQueue();toast("Добавлено в очередь");return}
+  const ac=e.target.closest("[data-act]");
+  if(ac&&ac.dataset.act==="close"){$("#qDlg").close();return}
+  if(ac&&ac.dataset.act==="next"){qNext(qOpenId);return}
   const it=e.target.closest(".qitem");if(!it)return;const id=it.dataset.q,t=queue[id];if(!t)return;
   const s2=e.target.closest("[data-st2]");if(s2){setTaskSt(id,s2.dataset.st2);return}
   const a=e.target.closest("[data-act]");if(!a)return;
   const txt=it.querySelector(".qtext").value;
   if(a.dataset.act==="chat"){copy(txt,"Текст скопирован: вставьте его в чат (Ctrl+V), отправьте и нажмите «Отправил»")}
   else if(a.dataset.act==="copy"){copy(txt,"Текст скопирован")}
-  else if(a.dataset.act==="auto"){e.preventDefault();t.text="";t.at=Date.now();store.set("queue",queue);renderQueue()}
-  else if(a.dataset.act==="del"){if(confirm("Удалить «"+(t.name||t.vk)+"» из очереди?")){delete queue[id];store.set("queue",queue);renderQBadge();renderQueue()}}
-});
-$("#qview").addEventListener("input",e=>{const ta=e.target.closest(".qtext");if(!ta)return;const id=ta.closest(".qitem").dataset.q;clearTimeout(ta._t);ta._t=setTimeout(()=>{if(queue[id]){const v=ta.value;queue[id].text=v.trim()===String(qAuto[id]||"").trim()?"":v;queue[id].at=Date.now();store.set("queue",queue)}},700)});
+  else if(a.dataset.act==="auto"){e.preventDefault();t.text="";t.at=Date.now();store.set("queue",queue);renderQueue();if($("#qDlg").open)renderQDlg()}
+  else if(a.dataset.act==="del"){if(confirm("Удалить «"+(t.name||t.vk)+"» из очереди?")){delete queue[id];store.set("queue",queue);renderQBadge();renderQueue();if(qOpenId===id){qOpenId=null;renderQDlg()}}}
+}
+$("#qview").addEventListener("click",qClick);$("#qDlg").addEventListener("click",e=>{if(e.target===$("#qDlg")){$("#qDlg").close();return}qClick(e)});
+$("#qDlg").addEventListener("close",()=>{qOpenId=null});
+const qInput=e=>{const ta=e.target.closest(".qtext");if(!ta)return;const id=ta.closest(".qitem").dataset.q;clearTimeout(ta._t);ta._t=setTimeout(()=>{if(queue[id]){const v=ta.value;queue[id].text=v.trim()===String(qAuto[id]||"").trim()?"":v;queue[id].at=Date.now();store.set("queue",queue)}},700)};
+$("#qview").addEventListener("input",qInput);$("#qDlg").addEventListener("input",qInput);
 document.querySelectorAll("#appbar .mseg button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 
 function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;if(s==="new"||s==="site")delete who[id];else who[id]={n:myName(),s,at:Date.now()};store.set("who",who);store.set("statuses",statuses);renderStats();renderList();
