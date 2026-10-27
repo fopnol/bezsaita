@@ -63,7 +63,7 @@ body.tool :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .search h1 em{font-style:normal;color:var(--accent)}
 .cityrow{display:flex;gap:8px}
 .cityrow input{flex:1;min-width:0}
-input[type=text],input[type=tel],input[type=number],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;min-width:0;width:100%}
+input[type=text],input[type=tel],input[type=number],input[type=password],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;min-width:0;width:100%}
 input:focus,select:focus,textarea:focus{border-color:var(--ink);outline:none}
 .niches{display:flex;flex-wrap:wrap;gap:6px}
 .chip{position:relative}
@@ -160,7 +160,12 @@ dialog::backdrop{background:rgba(10,14,12,.45)}
 .field{display:grid;gap:4px;min-width:0}
 .field label{font-size:12.5px;color:var(--muted)}
 .field.full{grid-column:1/-1}
-.dlgfoot{display:flex;justify-content:flex-end;gap:8px}
+.dlgfoot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+dialog.wide{width:min(720px,calc(100vw - 32px))}
+.field.sep{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+.citypick{width:auto;max-width:220px;padding:8px 10px}
+.notebox{display:grid;gap:4px}.notebox textarea{min-height:44px;resize:vertical;font-size:14px}
+.bad{color:var(--accent)}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;z-index:1000;box-shadow:0 10px 30px -10px rgba(0,0,0,.4)}
 
 @media (max-width:1100px){.grid2{grid-template-columns:minmax(0,1fr)}}
@@ -306,6 +311,14 @@ function telHref(p){const d=String(p||"").split(/[;,]/)[0].replace(/[^\d+]/g,"")
 /* Photos go through our own domain (Netlify Image CDN), so they load even where the photo stock site is blocked or slow. */
 const DIRECT=id=>w=>"https://images.unsplash.com/photo-"+id+"?auto=format&fit=crop&w="+w+"&q=72";
 const ON_NETLIFY=/netlify\.app$/.test(location.hostname);
+const DATA_REPO="fopnol/bezsaita-data",SITE_REPO="fopnol/bezsaita",SITE_BASE="https://fopnol.github.io/bezsaita/";
+/* Short draft links (?d=slug): the data lives in the "drafts" branch of the public site repo. */
+async function loadDraft(slug){
+  slug=String(slug||"").replace(/[^a-z0-9-]/g,"");if(!slug)return null;
+  const tries=[["https://raw.githubusercontent.com/"+SITE_REPO+"/drafts/d/"+slug+".json",{}],["https://api.github.com/repos/"+SITE_REPO+"/contents/d/"+slug+".json?ref=drafts",{headers:{Accept:"application/vnd.github.raw"}}],["https://cdn.jsdelivr.net/gh/"+SITE_REPO+"@drafts/d/"+slug+".json",{}]];
+  for(const [u,o] of tries){try{const r=await fetch(u,Object.assign({cache:"no-store"},o));if(r.ok)return await r.json()}catch(e){}}
+  return null;
+}
 const viaCDN=(url,w)=>ON_NETLIFY?"/.netlify/images?url="+encodeURIComponent(url)+"&w="+w+"&q=72":url;
 const U=id=>w=>viaCDN(DIRECT(id)(w),w);
 const PH={
@@ -937,14 +950,17 @@ body.site{margin:0;background:var(--bg);color:var(--ink);font-family:"Onest","Ma
 }
 @media(prefers-reduced-motion:reduce){.anim .rv,.anim .split .wd>span,.anim .clip,.anim .clip img{transition:none!important;opacity:1!important;transform:none!important;clip-path:none!important}.mq>div,.hC>.ph img,.live i::after,.ring svg{animation:none}.loader{display:none}}
 `;
-async function bootSite(){
+async function bootSite(dIn,slug){
   document.documentElement.classList.add("site-h");
   document.body.className="site";
   document.getElementById("fontsTool").href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=Unbounded:wght@600;700&family=Oswald:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Tenor+Sans&family=Rubik:wght@500;700;800&display=swap";
   const st=document.createElement("style");st.textContent=SITE_CSS;document.head.appendChild(st);
-  let d;
-  try{d=await unpackData(location.hash.slice(3))}catch(e){document.body.innerHTML='<p style="padding:40px;font-family:system-ui">Ссылка повреждена. Попросите отправить её ещё раз.</p>';return}
-  const kk=kkOf(d.t||"",d.c||"other",d.n),K=KK[kk]||KK.other;
+  let d=dIn||null;
+  if(!d&&slug){d=await loadDraft(slug);if(!d){document.body.innerHTML='<p style="padding:40px;font-family:system-ui">Черновик не нашёлся. Если ссылку прислали только что, откройте её ещё раз через минуту.</p>';return}}
+  if(!d){try{d=await unpackData(location.hash.slice(3))}catch(e){document.body.innerHTML='<p style="padding:40px;font-family:system-ui">Ссылка повреждена. Попросите отправить её ещё раз.</p>';return}}
+  const REAL=!!d.real;
+  const kk=kkOf(d.t||"",d.c||"other",d.n);let K=KK[kk]||KK.other;
+  if(REAL){K=Object.assign({},K);if(d.ld)K.lead=d.ld;if(d.sv&&d.sv.length){if(K.mod==="book")K.pr=d.sv;else if(K.mod==="menu")K.menu={"Меню":d.sv};else K.cat=d.sv.map(x=>[x[0],x[2]])}}
   const seed=hashStr(d.n+"|"+(d.a||""));const R=rng(seed);
   const ti=[0,1,2,3,4,5].includes(d.s)?d.s:pickTheme(kk,seed);const TH=THEMES[ti],th=TH.id;
   const P=themePalette(th,kk,R);
@@ -953,12 +969,13 @@ async function bootSite(){
   const photos=(PH[K.ph]||PH.store).slice();for(let i=photos.length-1;i>0;i--){const j=Math.floor(R()*(i+1));[photos[i],photos[j]]=[photos[j],photos[i]]}
   if(K.pin){const pi=photos.indexOf(K.pin);if(pi>0){photos.splice(pi,1);photos.unshift(K.pin)}}
   if(d.ph)photos.unshift("__own__");
-  const srcOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?viaCDN(d.ph,w):U(id)(w)};
-  const directOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?d.ph:DIRECT(id)(w)};
+  if(REAL&&d.pics&&d.pics.length){photos.length=0;d.pics.forEach(u=>photos.push("@"+u))}
+  const srcOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?viaCDN(d.ph,w):id[0]==="@"?viaCDN(id.slice(1),w):U(id)(w)};
+  const directOf=(i,w)=>{const id=photos[i%photos.length];return id==="__own__"?d.ph:id[0]==="@"?id.slice(1):DIRECT(id)(w)};
   const pic=(i,w,cls,extra)=>'<div class="ph'+(cls?" "+cls:"")+'"'+(extra||"")+'><img loading="'+(i<2?"eager":"lazy")+'" alt="" src="'+esc(srcOf(i,w))+'" data-d="'+esc(directOf(i,w))+'" onerror="if(this.dataset.f)this.remove();else{this.dataset.f=1;this.src=this.dataset.d}"></div>';
   const bn=brandName(d.n);
   const pool=K.h.concat((HEADT[K.mod]||HEADT.book).map(t=>t.replace(/\{W\}/g,bn.word)));
-  const head=pool[Math.floor(R()*pool.length)];
+  const head0=pool[Math.floor(R()*pool.length)],head=REAL&&d.hd?d.hd:head0;
   const kind=KIND[d.t]||"Местный бизнес";
   const descr=(bn.descr||kind).toLowerCase();
   const initial=(bn.word.replace(/[^A-Za-zА-Яа-яЁё0-9]/g,"")[0]||"•").toUpperCase();
@@ -1099,11 +1116,22 @@ async function bootSite(){
     foot='<footer class="pfoot"><div class="w"><span class="fit" data-fit>'+esc(bn.word)+'</span><div style="color:var(--mute);font-size:13px">© '+new Date().getFullYear()+' '+esc(d.n)+'</div></div></footer>';
   }
 
-  const demo='<div class="demo"><span>Черновик сайта для «'+esc(d.n)+'»'+(me.n?'. Подготовил '+esc(me.n):'')+'. Нравится? Сделаю настоящий.</span>'+(meLink?'<a href="'+esc(meLink)+'" target="_blank" rel="noopener">Написать'+(me.n?' '+esc(me.n):'')+'</a>':'')+'</div>';
+  const demo=REAL?'':'<div class="demo"><span>Черновик сайта для «'+esc(d.n)+'»'+(me.n?'. Подготовил '+esc(me.n):'')+'. Нравится? Сделаю настоящий.</span>'+(meLink?'<a href="'+esc(meLink)+'" target="_blank" rel="noopener">Написать'+(me.n?' '+esc(me.n):'')+'</a>':'')+'</div>';
   const hdr='<header class="hdr'+(th==="cinema"?" ov":"")+'"><div class="w"><a href="#top" style="text-decoration:none;min-width:0">'+logo(40)+'</a><nav class="menu-l">'+(K.mod==="book"?'<a href="#price">Цены</a>':'')+'<a href="'+ctaT+'">'+esc(modTitle)+'</a><a href="#contacts">Контакты</a></nav>'+(phone?'<a class="tel" href="'+esc(telHref(phone))+'">'+ico("phone")+'<span>'+esc(phone)+'</span></a>':'')+'</div></header>';
   const dock='<div class="dock">'+(phone?'<a class="btn3 o" href="'+esc(telHref(phone))+'">'+ico("phone")+'Позвонить</a>':'')+'<a class="btn3 a" href="'+ctaT+'">'+esc(K.cta)+'</a></div>';
   const loader=motion&&!sessionStorageSafe("seen:"+seed+":"+ti)?'<div class="loader" id="loader">'+logo(52)+'</div>':'';
   document.getElementById("app").innerHTML=loader+demo+hdr+hero+body.join("")+foot+dock;
+  if(REAL){
+    document.querySelectorAll(".note").forEach(e=>e.remove());
+    const bg=document.querySelector(".brand-g");if(bg){const sc=bg.closest("section");if(sc)sc.remove()}
+    document.querySelectorAll(".shead p,.el-head p").forEach(p=>{if(/пример|будут ваш/i.test(p.textContent))p.remove()});
+  }
+  const orderTo=t=>{
+    if(d.bw){location.href="https://wa.me/"+digits(d.bw)+"?text="+encodeURIComponent(t);return}
+    if(d.bt){try{navigator.clipboard.writeText(t)}catch(e){}modal("Откроем Telegram","Текст заявки скопирован: вставьте его в чат.");setTimeout(()=>{location.href="https://t.me/"+d.bt},900);return}
+    if(phone){location.href=telHref(phone);return}
+    modal("Спасибо!","Позвоните нам или зайдите, и мы всё оформим.");
+  };
 
   document.querySelectorAll(".shead .n").forEach((el,i)=>el.textContent="("+String(i+1).padStart(2,"0")+")");
   const fitAll=()=>document.querySelectorAll("[data-fit]").forEach(el=>{const p=el.parentElement;const cs=getComputedStyle(p);const cw=p.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);el.style.fontSize="100px";const w=el.getBoundingClientRect().width||1;el.style.fontSize=Math.min(100*cw/w,th==="brutal"?320:400)+"px"});
@@ -1122,7 +1150,7 @@ async function bootSite(){
     const g=document.querySelector(".gal-h");if(g){let down=false,sx=0,sl=0;g.addEventListener("mousedown",e=>{down=true;sx=e.pageX;sl=g.scrollLeft;g.style.cursor="grabbing"});addEventListener("mouseup",()=>{down=false;g.style.cursor=""});g.addEventListener("mousemove",e=>{if(down){e.preventDefault();g.scrollLeft=sl-(e.pageX-sx)}})}
   }
   const modal=(t,x)=>{const m=document.createElement("div");m.className="modal";m.innerHTML='<div role="dialog" aria-modal="true"><b>'+esc(t)+'</b><p>'+esc(x)+'</p><button class="btn3 a" type="button">Понятно</button></div>';document.body.appendChild(m);m.addEventListener("click",e=>{if(e.target===m||e.target.closest("button"))m.remove()});m.querySelector("button").focus()};
-  document.querySelectorAll("[data-demo]").forEach(b=>b.addEventListener("click",()=>modal("Добавлено","На настоящем сайте покупатель оформит заказ, а уведомление сразу придёт владельцу в Telegram.")));
+  document.querySelectorAll("[data-demo]").forEach(b=>{if(REAL){b.textContent="Заказать";b.addEventListener("click",()=>{const it=b.closest(".citem"),nm=it&&it.querySelector(".row b");orderTo("Здравствуйте! Хочу заказать: "+(nm?nm.textContent:"")+".")})}else b.addEventListener("click",()=>modal("Добавлено","На настоящем сайте покупатель оформит заказ, а уведомление сразу придёт владельцу в Telegram."))});
   document.querySelectorAll(".tabs3 button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tabs3 button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));document.querySelectorAll("[data-p]").forEach(p=>{p.hidden=p.dataset.p!==b.dataset.c;p.querySelectorAll(".rv").forEach(x=>x.classList.add("in"))})}));
   if(K.mod==="book"){
     const wkx=wk||Array.from({length:7},(_,i)=>i<6?[[600,1200]]:[[660,1080]]);const now=new Date();const nowM=now.getHours()*60+now.getMinutes();const days=[];
@@ -1131,13 +1159,13 @@ async function bootSite(){
     const dayName=x=>x.k===0?"Сегодня":x.k===1?"Завтра":DOW[x.dw];
     const sum=()=>{document.getElementById("bkSum").textContent=svc[sS]?svc[sS][0]:"";const x=days[sD];document.getElementById("bkSum2").textContent=x?(dayName(x)+", "+x.dt.getDate()+" "+MON[x.dt.getMonth()]+(sT!=null?" в "+fmtMin(sT):" — выберите время")+(svc[sS]&&/\d/.test(svc[sS][2])?" · "+priceTxt(svc[sS][2]):"")):"Выберите день"};
     const dD=()=>{document.getElementById("bkD").innerHTML=days.map((x,i)=>'<button type="button" data-d="'+i+'" aria-pressed="'+(i===sD)+'">'+dayName(x)+'<small>'+x.dt.getDate()+' '+MON[x.dt.getMonth()].slice(0,3)+'</small></button>').join("")};
-    const dT=()=>{const x=days[sD];if(!x){document.getElementById("bkT").innerHTML="";return}const rr=rng(seed+x.k*97);const sl=[];for(const [a,b] of wkx[x.dw])for(let m=Math.ceil(a/60)*60;m+60<=Math.min(b,1440);m+=60){if(x.k===0&&m<=nowM+30)continue;sl.push({m,busy:rr()<.3})}
+    const dT=()=>{const x=days[sD];if(!x){document.getElementById("bkT").innerHTML="";return}const rr=rng(seed+x.k*97);const sl=[];for(const [a,b] of wkx[x.dw])for(let m=Math.ceil(a/60)*60;m+60<=Math.min(b,1440);m+=60){if(x.k===0&&m<=nowM+30)continue;sl.push({m,busy:!REAL&&rr()<.3})}
       document.getElementById("bkT").innerHTML=sl.map(s=>'<button type="button" data-t="'+s.m+'"'+(s.busy?' disabled title="Занято"':'')+' aria-pressed="'+(sT===s.m)+'">'+fmtMin(s.m)+'</button>').join("")};
     dD();dT();sum();
     document.getElementById("bkS").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;sS=+b.dataset.i;document.querySelectorAll("#bkS button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));sum()});
     document.getElementById("bkD").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;sD=+b.dataset.d;sT=null;dD();dT();sum()});
     document.getElementById("bkT").addEventListener("click",e=>{const b=e.target.closest("button");if(!b||b.disabled)return;sT=+b.dataset.t;dT();sum()});
-    document.getElementById("bkGo").addEventListener("click",()=>{if(sT==null){modal("Выберите время","Нажмите на свободное время, и запись будет готова.");return}const x=days[sD];modal("Вы записаны!",svc[sS][0]+", "+dayName(x).toLowerCase()+", "+x.dt.getDate()+" "+MON[x.dt.getMonth()]+" в "+fmtMin(sT)+". Это демо: на настоящем сайте заявка сразу придёт владельцу в Telegram, а клиенту — напоминание.")});
+    document.getElementById("bkGo").addEventListener("click",()=>{if(sT==null){modal("Выберите время","Нажмите на свободное время, и запись будет готова.");return}const x=days[sD];if(REAL){orderTo("Здравствуйте! Хочу записаться: "+svc[sS][0]+", "+dayName(x).toLowerCase()+", "+x.dt.getDate()+" "+MON[x.dt.getMonth()]+" в "+fmtMin(sT)+".");return}modal("Вы записаны!",svc[sS][0]+", "+dayName(x).toLowerCase()+", "+x.dt.getDate()+" "+MON[x.dt.getMonth()]+" в "+fmtMin(sT)+". Это демо: на настоящем сайте заявка сразу придёт владельцу в Telegram, а клиенту — напоминание.")});
   }
 }
 function plural(n,f){const a=Math.abs(n)%100,b=a%10;return a>10&&a<20?f[2]:b>1&&b<5?f[1]:b===1?f[0]:f[2]}
@@ -1148,7 +1176,10 @@ function sessionStorageSafe(k){try{const v=sessionStorage.getItem(k);sessionStor
    ============================================================ */
 function bootTool(){
 const $=s=>document.querySelector(s);
-const store={get(k,d){try{const v=localStorage.getItem("bz:"+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem("bz:"+k,JSON.stringify(v))}catch(e){}}};
+const SYNC_KEYS=new Set(["statuses","sites","vkinfo","styles","notes","who","cities","pubs","reals"]);
+const store={get(k,d){try{const v=localStorage.getItem("bz:"+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  setQ(k,v){try{localStorage.setItem("bz:"+k,JSON.stringify(v))}catch(e){}},
+  set(k,v){this.setQ(k,v);if(SYNC_KEYS.has(k)){try{scheduleSync()}catch(e){}}}};
 const ST={new:"Не трогал",sent:"Написал",replied:"Ответили",client:"Клиент",no:"Отказ",site:"Есть сайт"};
 let sites=store.get("sites",{});
 const STYLE_NAMES=THEMES.map(t=>t.name);
@@ -1164,7 +1195,7 @@ let leads=[],cityLabel="",isDemo=false,selId=null,filt="all",channel="chat",show
 
 $("#app").innerHTML=
 '<header class="appbar" id="appbar"><div class="appbar-in"><div class="logo">Без<s>сайта</s></div>'+
- '<form class="cityrow" id="sform"><input type="text" id="city" placeholder="Город, например: Чебоксары" autocomplete="off" aria-label="Город"><button class="btn primary" id="go" type="submit">Найти</button></form>'+
+ '<form class="cityrow" id="sform"><input type="text" id="city" placeholder="Город, например: Чебоксары" autocomplete="off" aria-label="Город"><button class="btn primary" id="go" type="submit">Найти</button></form><select id="cityPick" class="citypick" aria-label="Мои города" hidden></select>'+
  '<div class="stats" id="stats"></div><button class="btn sm ghost" id="profBtn">'+ico("user")+'Профиль</button></div>'+
  '<div class="toolbar"><div class="niches" id="niches">'+NICHES.map(n=>'<label class="chip"><input type="checkbox" data-n="'+n.id+'"'+(nicheOn[n.id]?" checked":"")+'><span>'+n.ru+'</span></label>').join("")+'</div>'+
  '<div class="progress" id="prog"></div><div class="verify" id="srcline"></div></div></header>'+
@@ -1188,17 +1219,37 @@ $("#app").innerHTML=
  '<div class="field"><label for="pV">ID приложения VK</label><input type="text" id="pV" inputmode="numeric" placeholder="например, 54123456" autocomplete="off"></div>'+
  '<div class="field"><label>Вход через ВК</label><button type="button" class="btn" id="vkLogin">Войти через ВК</button></div>'+
  '<div class="field full"><small id="vkStat" style="color:var(--muted)"></small></div>'+
+ '<div class="field full sep"><b>Общая база с другом</b><small style="color:var(--muted)">Статусы, заметки, города и проверки сайтов видны всем, у кого есть этот токен. Данные лежат в вашем закрытом репозитории GitHub '+DATA_REPO+'.</small></div>'+
+ '<div class="field full"><label for="pG">Токен GitHub или код от друга</label><input type="password" id="pG" placeholder="github_pat_… или BZ1.…" autocomplete="off"><small id="ghStat" style="color:var(--muted)"></small></div>'+
+ '<div class="field full"><div class="lrow"><button type="button" class="btn sm" id="friendBtn">Настройки для друга</button><button type="button" class="btn sm" id="bkSave">Сохранить копию в файл</button><button type="button" class="btn sm" id="bkLoad">Восстановить из файла</button><input type="file" id="bkFile" accept=".json,application/json" hidden></div></div>'+
  '<div class="field"><label for="pF">ID каталога Yandex Cloud</label><input type="text" id="pF" placeholder="b1g…" autocomplete="off"></div>'+
  '<div class="field full"><small style="color:var(--muted)">С ключом Яндекса проверка сайтов идёт через поиск Яндекса: в разы точнее, около 0,5 ₽ за бизнес. Без ключа — только проверка похожих доменов и OpenStreetMap, поэтому часть сайтов останется незамеченной.</small></div></div>'+
- '<div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn primary" id="psave" value="ok">Сохранить</button></div></form></dialog>';
+ '<div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn primary" id="psave" value="ok">Сохранить</button></div></form></dialog>'+
+'<dialog id="siteDlg" class="wide"><form method="dialog" class="dlg"><h3>Настоящий сайт для клиента</h3><p>Поправьте тексты, цены и фото. На настоящем сайте сами убираются плашка «черновик», пометки «для примера» и раздел про фирменный стиль. Заявки и заказы с сайта приходят клиенту в WhatsApp или Telegram.</p>'+
+ '<div class="fgrid">'+
+ '<div class="field full"><label for="rN">Название</label><input type="text" id="rN"></div>'+
+ '<div class="field full"><label for="rHd">Главный заголовок</label><input type="text" id="rHd" placeholder="Пусто: как в черновике"></div>'+
+ '<div class="field full"><label for="rLd">Текст под заголовком</label><textarea id="rLd" rows="2"></textarea></div>'+
+ '<div class="field"><label for="rP">Телефон</label><input type="tel" id="rP"></div>'+
+ '<div class="field"><label for="rA">Адрес</label><input type="text" id="rA"></div>'+
+ '<div class="field full"><label for="rH">Часы работы</label><input type="text" id="rH" placeholder="Mo-Fr 09:00-20:00; Sa 10:00-18:00"><small style="color:var(--muted)">Дни: Mo Tu We Th Fr Sa Su, промежутки через точку с запятой.</small></div>'+
+ '<div class="field full"><label for="rSv" id="rSvL">Услуги и цены</label><textarea id="rSv" rows="7"></textarea><small style="color:var(--muted)">Одна строка: «Название — цена — описание». Описание можно не писать.</small></div>'+
+ '<div class="field full"><label for="rPh">Фото клиента: ссылки, каждая с новой строки</label><textarea id="rPh" rows="3" placeholder="https://…"></textarea><small style="color:var(--muted)">Из их группы ВК или 2ГИС: правой кнопкой по фото → «Копировать адрес изображения». Пусто: останутся подобранные фото.</small></div>'+
+ '<div class="field"><label for="rW">WhatsApp клиента для заявок</label><input type="tel" id="rW" placeholder="+7 900 000-00-00"></div>'+
+ '<div class="field"><label for="rT">или Telegram клиента</label><input type="text" id="rT" placeholder="@username"></div>'+
+ '<div class="field full"><label for="rS">Адрес сайта (латиницей)</label><input type="text" id="rS"><small id="rStat" style="color:var(--muted)"></small></div>'+
+ '</div><div class="dlgfoot"><button class="btn" value="cancel" formnovalidate>Закрыть</button><button type="button" class="btn" id="rSave">Сохранить</button><button type="button" class="btn" id="rPrev">Посмотреть</button><button type="button" class="btn" id="rDl">Скачать HTML</button><button type="button" class="btn primary" id="rPub">Опубликовать</button></div></form></dialog>';
 
 /* ---------- profile ---------- */
 function openProfile(){
-  $("#pN").value=prof.n;$("#pW").value=prof.w;$("#pT").value=prof.tg;$("#pE").value=prof.e;$("#pP").value=prof.price;$("#pD").value=prof.days;$("#pK").value=prof.k2||"";$("#pY").value=prof.ys||"";$("#pF").value=prof.yf||"";$("#pV").value=prof.vkapp||"";$("#vkStat").textContent=vkTok?"Вход выполнен: парсер сам проверяет группы ВК.":"Вход не выполнен. Нужен ID приложения из кабинета VK ID для бизнеса.";
+  $("#pN").value=prof.n;$("#pW").value=prof.w;$("#pT").value=prof.tg;$("#pE").value=prof.e;$("#pP").value=prof.price;$("#pD").value=prof.days;$("#pK").value=prof.k2||"";$("#pY").value=prof.ys||"";$("#pF").value=prof.yf||"";$("#pV").value=prof.vkapp||"";$("#pG").value=prof.ghTok||"";$("#ghStat").textContent=ghOn()?(syncSt.err?"Ошибка: "+syncSt.err:"Подключено."):"Вставьте токен со страницы github.com/settings/personal-access-tokens или код, который прислал друг.";$("#vkStat").textContent=vkTok?"Вход выполнен: парсер сам проверяет группы ВК.":"Вход не выполнен. Нужен ID приложения из кабинета VK ID для бизнеса.";
   $("#dlg").showModal();
 }
 $("#profBtn").onclick=openProfile;
-$("#psave").onclick=()=>{prof={n:$("#pN").value.trim(),w:$("#pW").value.trim(),tg:$("#pT").value.trim(),e:$("#pE").value.trim(),price:$("#pP").value||"15000",rub:true,days:$("#pD").value||"5",lang:"ru",k2:$("#pK").value.replace(/\s+/g,""),ys:$("#pY").value.trim(),yf:$("#pF").value.trim(),vkapp:$("#pV").value.trim()};store.set("profile",prof);toast("Профиль сохранён");renderSource();renderDetail()};
+$("#psave").onclick=()=>{prof={n:$("#pN").value.trim(),w:$("#pW").value.trim(),tg:$("#pT").value.trim(),e:$("#pE").value.trim(),price:$("#pP").value||"15000",rub:true,days:$("#pD").value||"5",lang:"ru",k2:$("#pK").value.replace(/\s+/g,""),ys:$("#pY").value.trim(),yf:$("#pF").value.trim(),vkapp:$("#pV").value.trim()};
+  const gv=$("#pG").value.trim(),fc=parseFriendCode(gv);prof.ghTok=fc?fc.t:gv.replace(/\s+/g,"");if(fc&&!prof.k2&&fc.k2)prof.k2=fc.k2;
+  store.set("profile",prof);toast("Профиль сохранён");renderSource();renderDetail();
+  if(ghOn())ghCheck().then(ok=>{if(ok){syncNow().then(uploadCities);pollJobs(1000)}});else{syncSt={ok:false,at:0,err:""};renderSyncLine()}};
 
 /* ---------- search ---------- */
 const OVERPASS=[
@@ -1387,7 +1438,7 @@ $("#sform").addEventListener("submit",async e=>{
     const list=enrich(raw);
     if(!list.length){prog("Не нашлось подходящих заведений в «"+esc(label)+"». Добавьте ниши или уточните название города.",true);return}
     leads=list;applyVk();isDemo=false;cityLabel=label;selId=null;showN=200;filt="all";syncSeg();
-    store.set("last",{city:cityLabel,data:raw});
+    saveCity(cityLabel,raw);
     const head=esc(cityLabel)+': найдено '+list.length+'. ';
     prog(head+esc(note));
     renderAll(true);
@@ -1395,9 +1446,11 @@ $("#sform").addEventListener("submit",async e=>{
       prog(head+'<span class="spin"></span>Сверяю с OpenStreetMap…');
       const o=prof.k2?await osmCrossCheck(list):0;
       const h2=head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':'');
+      const lab=cityLabel;
+      if(ghOn())startDomainJob(list,lab);
       if(vkTok)await runVkCheck(true,h2);
-      if(ON_NETLIFY)checkAll(true,h2);
-      else if(!vkTok)prog(h2+esc(note)+' Войдите через ВК в профиле, и парсер будет сам проверять их группы.');
+      if(!ghOn()&&ON_NETLIFY)checkAll(true,h2);
+      if(!vkTok)prog(h2+esc(note)+(ghOn()?' Домены проверяются на GitHub. Войдите через ВК в профиле, чтобы проверять ещё и группы ВК.':' Войдите через ВК в профиле, и парсер будет сам проверять их группы.'));
     },50);
   }catch(err){
     clearInterval(tick);
@@ -1471,7 +1524,7 @@ function renderList(){
   const v=visible(),ul=$("#list");const cn=$("#count");if(cn)cn.textContent=leads.length?v.length+' в списке':'';
   if(!leads.length){ul.innerHTML='<li class="more">Введите город и нажмите «Найти».</li>';return}
   if(!v.length){ul.innerHTML='<li class="more">Под эти фильтры ничего нет.</li>';return}
-  ul.innerHTML=v.slice(0,showN).map(l=>{const s=stOf(l.id);return'<li class="lead" role="option" tabindex="0" data-id="'+esc(l.id)+'" aria-selected="'+(l.id===selId)+'"><i class="dot '+l.temp+'"></i><span class="nm">'+esc(l.name)+'</span><span class="pill '+s+'">'+ST[s]+'</span><span class="sub">'+(l.tags["dg:rating"]?'<b>★ '+esc(l.tags["dg:rating"])+'</b> · ':'')+esc(l.kind)+(l.addr?' · '+esc(l.addr):'')+'</span></li>'}).join("")+
+  ul.innerHTML=v.slice(0,showN).map(l=>{const s=stOf(l.id);return'<li class="lead" role="option" tabindex="0" data-id="'+esc(l.id)+'" aria-selected="'+(l.id===selId)+'"><i class="dot '+l.temp+'"></i><span class="nm">'+esc(l.name)+'</span><span class="pill '+s+'">'+ST[s]+'</span><span class="sub">'+(who[l.id]&&s!=="new"&&s!=="site"?'<b>'+esc(who[l.id].n)+'</b> · ':'')+(notes[l.id]?'✎ ':'')+(l.tags["dg:rating"]?'<b>★ '+esc(l.tags["dg:rating"])+'</b> · ':'')+esc(l.kind)+(l.addr?' · '+esc(l.addr):'')+'</span></li>'}).join("")+
    (v.length>showN?'<li class="more"><button class="btn sm" id="moreBtn">Показать ещё '+Math.min(200,v.length-showN)+' из '+(v.length-showN)+'</button></li>':'');
   const mb=$("#moreBtn");if(mb)mb.onclick=()=>{showN+=200;renderList()};
 }
@@ -1481,13 +1534,14 @@ function welcome(){
    '<div class="steps"><div><b>Найти</b>Город и ниши. Около минуты на большой город.</div><div><b>Показать</b>У каждого бизнеса свой сайт-черновик с его адресом, телефоном и часами.</div><div><b>Написать</b>Готовое сообщение со ссылкой, в один клик в WhatsApp, Telegram или почту.</div></div>'+
    '<div class="lrow"><button class="btn dark" id="demoBtn">Посмотреть на примере</button>'+(prof.n?'':'<button class="btn" id="profBtn2">'+ico("user")+'Заполнить профиль</button>')+'</div></div>';
 }
-async function linkFor(l){
+function draftData(l){
   const st=styleOf[l.id]??defStyle(l);
   const d={n:l.name,c:l.niche,t:l.tag,a:l.addr||undefined,p:l.phone||undefined,h:l.tags.opening_hours||undefined,s:st,r:l.tags["dg:rating"]||undefined,rc:l.tags["dg:reviews"]||undefined,ph:l.tags["dg:photo"]||undefined,l:prof.lang,
     la:l.lat!=null?+l.lat.toFixed(5):undefined,lo:l.lon!=null?+l.lon.toFixed(5):undefined,
     m:(prof.n||prof.w||prof.tg||prof.e)?{n:prof.n||undefined,w:prof.w||undefined,tg:prof.tg||undefined,e:prof.e||undefined}:undefined};
-  return location.origin+location.pathname+"#s/"+await packData(d);
+  return d;
 }
+async function linkFor(l){return location.origin+location.pathname+"#s/"+await packData(draftData(l))}
 function message(l,link){
   const en=prof.lang==="en",me=prof.n,price=rub(prof.price),days=prof.days||"…";
   const ben=(COPY[en?"en":"ru"][BEN_KEY(l.niche,l.tag)]||COPY.ru.other).ben;
@@ -1503,7 +1557,9 @@ let renderToken=0;
 async function renderDetail(){
   const box=$("#detail");const l=leads.find(x=>x.id===selId);
   if(!l){box.innerHTML=welcome();const db=$("#demoBtn");if(db)db.onclick=loadDemo;const p2=$("#profBtn2");if(p2)p2.onclick=openProfile;return}
-  const my=++renderToken;const link=await linkFor(l);if(my!==renderToken)return;
+  const my=++renderToken;const long=await linkFor(l);if(my!==renderToken)return;
+  let link=long;
+  if(ghOn()&&!isDemo){const d0=draftData(l);if(draftReady(l,d0))link=SITE_BASE+"?d="+draftSlug(l);else ensureDraft(l,d0).then(ok=>{if(ok&&selId===l.id&&!editing()&&!$("#siteDlg").open)renderDetail()})}
   const s=stOf(l.id),st=styleOf[l.id]??null,msg=message(l,link),full=(msg.subject?(prof.lang==="en"?"Subject: ":"Тема: ")+msg.subject+"\n\n":"")+msg.body;
   const wa=l.phone?"https://wa.me/"+digits(l.phone)+"?text="+encodeURIComponent(msg.body):"https://wa.me/?text="+encodeURIComponent(msg.body);
   const tg="https://t.me/share/url?url="+encodeURIComponent(link)+"&text="+encodeURIComponent(msg.body.replace(link,"").replace(/\n{3,}/g,"\n\n"));
@@ -1516,11 +1572,14 @@ async function renderDetail(){
    '<div class="phead"><div style="min-width:0"><h2>'+esc(l.name)+'</h2><div class="meta"><span>'+esc(l.kind)+'</span>'+(l.addr?'<span>'+esc(l.addr)+'</span>':'')+(l.tags.opening_hours?'<span>'+esc(hoursLine(l.tags.opening_hours,"ru"))+'</span>':'')+'</div>'+
     '<div class="why">'+(l.why.length?l.why.map(w=>'<span class="ok">'+w+'</span>').join(""):'<span>контактов нет, ищите вручную</span>')+'</div></div>'+
     '<div class="statusbar" role="group" aria-label="Статус">'+Object.keys(ST).map(k=>'<button class="btn" data-st="'+k+'" aria-pressed="'+(k===s)+'">'+ST[k]+'</button>').join("")+'</div></div>'+
+   (who[l.id]&&s!=="new"&&s!=="site"?'<div class="verify">«'+ST[s]+'» поставил '+esc(who[l.id].n)+', '+ago(who[l.id].at)+'</div>':'')+
    '<div class="contacts">'+(l.phone?'<a class="c" href="'+esc(telHref(l.phone))+'">'+ico("phone")+'<code>'+esc(l.phone.split(/[;,]/)[0])+'</code></a>':'')+(l.email?'<span class="c">'+ico("mail")+'<code>'+esc(l.email)+'</code></span>':'')+(insta?'<a class="c" href="'+esc(insta)+'" target="_blank" rel="noopener">Instagram</a>':'')+(fb?'<a class="c" href="'+esc(fb)+'" target="_blank" rel="noopener">Facebook</a>':'')+(l.vk?'<a class="c" href="'+esc(l.vk)+'" target="_blank" rel="noopener">ВКонтакте</a>':'')+(l.tgc?'<a class="c" href="'+esc(l.tgc)+'" target="_blank" rel="noopener">Telegram</a>':'')+(l.dg?'<a class="c" href="https://2gis.ru/firm/'+esc(l.dg)+'" target="_blank" rel="noopener">Карточка в 2ГИС</a>':'<a class="c" href="https://2gis.ru/search/'+encodeURIComponent(l.name+' '+(cityLabel||''))+'" target="_blank" rel="noopener">Найти в 2ГИС</a><a class="c" href="https://yandex.ru/maps/?text='+encodeURIComponent(l.name+' '+(cityLabel||''))+'" target="_blank" rel="noopener">Яндекс Карты</a>')+
     '</div>'+(isDemo?'':siteBox(l,google))+
-   '<div class="grid2"><div><div class="phone"><iframe id="frame" title="Черновик сайта" src="'+esc(link)+'"></iframe></div>'+
+   (isDemo?'':'<div class="notebox"><textarea id="note" rows="2" aria-label="Заметка" placeholder="Заметка, видна и другу: например, «владелец Андрей, перезвонить в пятницу»">'+esc(notes[l.id]?notes[l.id].t:"")+'</textarea>'+(notes[l.id]?'<small class="verify">'+esc(notes[l.id].by||"")+', '+ago(notes[l.id].at)+'</small>':'')+'</div>')+
+   '<div class="grid2"><div><div class="phone"><iframe id="frame" title="Черновик сайта" src="'+esc(long)+'"></iframe></div>'+
      '<div class="under"><div class="styles" role="group" aria-label="Стиль">'+STYLE_NAMES.map((n,i)=>'<button class="btn sm" data-style="'+i+'" aria-pressed="'+(i===curSt)+'">'+n+'</button>').join("")+'</div></div>'+
-     '<div class="under"><a class="btn sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ico("ext")+'Открыть сайт</a><button class="btn sm" id="cpLink">'+ico("copy")+'Ссылка</button></div></div>'+
+     '<div class="under"><a class="btn sm" href="'+esc(link)+'" target="_blank" rel="noopener">'+ico("ext")+'Открыть сайт</a><button class="btn sm" id="cpLink">'+ico("copy")+'Ссылка</button></div>'+
+     (isDemo?'':'<div class="under"><button class="btn sm dark" id="realBtn">Сделать настоящий сайт</button>'+(pubs[l.id]?'<a class="btn sm" href="'+esc(pubs[l.id].url)+'" target="_blank" rel="noopener">'+ico("ext")+'Готовый сайт</a>':'')+'</div>')+'</div>'+
    '<div class="msgcol"><div class="lrow" style="justify-content:space-between"><p class="blockh" style="margin:0">Первое сообщение</p><div class="tabs" role="group" aria-label="Канал"><button data-ch="chat" aria-pressed="'+(channel==="chat")+'">Мессенджер</button><button data-ch="email" aria-pressed="'+(channel==="email")+'">Email</button></div></div>'+
      (prof.n?'':'<div class="nudge">Добавьте имя и контакты, чтобы владелец мог вам ответить. <button id="nudgeBtn">Заполнить профиль</button></div>')+
      '<textarea class="msg" id="msg" aria-label="Текст сообщения">'+esc(full)+'</textarea>'+
@@ -1536,20 +1595,27 @@ async function renderDetail(){
   $("#cpMsg").onclick=()=>copy($("#msg").value,"Сообщение скопировано",mark);
   $("#cpLink").onclick=()=>copy(link,"Ссылка на сайт скопирована");
   const nb=$("#nudgeBtn");if(nb)nb.onclick=openProfile;
-  const fs=$("#findSite");if(fs)fs.onclick=async()=>{fs.disabled=true;fs.textContent="Ищу сайт…";await checkSite(l);if(selId===l.id)renderDetail()};
+  const rb=$("#realBtn");if(rb)rb.onclick=()=>openReal(l);
+  const nt=$("#note");if(nt)nt.addEventListener("input",()=>{clearTimeout(nt._t);nt._t=setTimeout(()=>{const t=nt.value.trim();if(t)notes[l.id]={t,at:Date.now(),by:myName()};else delete notes[l.id];store.set("notes",notes);renderList()},700)});
+  const fs=$("#findSite");if(fs)fs.onclick=async()=>{fs.disabled=true;if(ghOn()){fs.textContent="Отправил на проверку…";if(!await startDomainJob([l],cityLabel,true))fs.textContent="Уже проверяется";return}fs.textContent="Ищу сайт…";await checkSite(l);if(selId===l.id)renderDetail()};
   const ns=$("#notSite");if(ns)ns.onclick=()=>{sites[l.id]={found:false,manual:true,at:Date.now()};store.set("sites",sites);if(stOf(l.id)==="site")setStatus(l.id,"new",true);renderDetail()};
 }
 function vkScreen(v){const m=String(v||"").match(/vk\.(?:com|ru)\/([A-Za-z0-9_.]+)/i);return m&&!/^(search|feed|im|share)$/i.test(m[1])?m[1]:""}
 function vkHref(l){const sc=vkScreen(l.vk);return sc?"https://vk.me/"+sc:"https://vk.com/search?c%5Bsection%5D=communities&c%5Bq%5D="+encodeURIComponent(l.name+" "+(cityLabel||""))}
 function siteBox(l,google){
-  const vi=vkinfo[l.id];
-  if(vi&&vi.url&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Нашлась их группа ВК: <a href="'+esc(vi.url)+'" target="_blank" rel="noopener">'+esc(vi.name||vi.url)+'</a>. Сайта в ней не указано.</span></div>';
-  if(vi&&vi.none&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Группу ВК с таким названием в этом городе не нашли. Можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span></div>';
-  if(!ON_NETLIFY&&!(sites[l.id]&&sites[l.id].found))return'<div class="sitebox"><span class="verify">Перед тем как писать, проверьте, нет ли у них сайта: <a href="'+esc(google)+'" target="_blank" rel="noopener">поиск в Google</a>.</span></div>';
-  const r=sites[l.id];
-  if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">совпало: '+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
-  if(r&&!r.found)return'<div class="sitebox"><span class="verify">'+(r.manual?'Отмечено вручную: сайта нет.':r.engine==="yandex"?'Сайт не нашёлся ни по домену, ни в поиске Яндекса.':'Похожих доменов с их сайтом нет, но без поиска это не гарантия. С ключом Яндекса в профиле проверка точная.')+' Для надёжности можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.</span><button class="btn sm" id="findSite">Проверить ещё раз</button></div>';
-  return'<div class="sitebox"><button class="btn sm dark" id="findSite">Найти сайт</button><span class="verify">Проверю похожие домены'+(prof.ys?' и поиск Яндекса':'')+'. Или <a href="'+esc(google)+'" target="_blank" rel="noopener">вручную в Google</a>.</span></div>';
+  const vi=vkinfo[l.id],r=sites[l.id];
+  const gl=' Можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.';
+  if(r&&r.found)return'<div class="sitebox found"><b>Похоже, сайт уже есть:</b> <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.url.replace(/^https?:\/\//,""))+'</a> <span class="verify">'+(r.engine==="vk"?'':'совпало: ')+esc((r.why||[]).join(", "))+'</span><button class="btn sm" id="notSite">Это не их сайт</button></div>';
+  const parts=[];
+  if(vi&&vi.url)parts.push('Группа ВК: <a href="'+esc(vi.url)+'" target="_blank" rel="noopener">'+esc(vi.name||vi.url)+'</a>, сайта в ней не указано.');
+  else if(vi&&vi.none)parts.push('Группу ВК в этом городе не нашли.');
+  if(r&&r.manual)parts.push('Отмечено вручную: сайта нет.');
+  else if(r&&r.dom)parts.push('Похожих доменов с их сайтом нет.');
+  else if(r&&r.engine==="yandex")parts.push('Сайт не нашёлся ни по домену, ни в поиске Яндекса.');
+  if(jobPending(l.id))parts.push('<span class="spin"></span>Домены сейчас проверяются.');
+  if(!parts.length)parts.push('Сайт ещё не проверяли.');
+  const btn=(ghOn()||ON_NETLIFY)&&!jobPending(l.id)?'<button class="btn sm" id="findSite">'+(r&&(r.dom||r.engine)?'Проверить ещё раз':'Проверить домены')+'</button>':'';
+  return'<div class="sitebox"><span class="verify">'+parts.join(" ")+gl+'</span>'+btn+'</div>';
 }
 async function checkSite(l){
   if(!ON_NETLIFY)return null;
@@ -1715,7 +1781,7 @@ async function runVkCheck(auto,head){
   if(!todo.length){if(!auto)toast("Все бизнесы уже проверены через ВК");return}
   const total=todo.length;let done=0,withSite=0,groups=0;
   const btn=$("#chk");
-  const upd=fin=>{if(btn)btn.textContent=fin?"Проверить ВК":"Стоп ("+done+"/"+total+")";prog(head+(fin?'':'<span class="spin"></span>')+'Проверяю группы ВК: '+done+' из '+total+'. Нашлась группа: '+groups+', из них с сайтом: '+withSite+(fin?'. Бизнесы с сайтом убраны из списка (фильтр «Есть сайт»).':'. Список обновляется на ходу.'))};
+  const upd=fin=>{if(btn)btn.textContent=fin?chkLabel():"Стоп ("+done+"/"+total+")";prog(head+(fin?'':'<span class="spin"></span>')+'Проверяю группы ВК: '+done+' из '+total+'. Нашлась группа: '+groups+', из них с сайтом: '+withSite+(fin?'. Бизнесы с сайтом убраны из списка (фильтр «Есть сайт»).':'. Список обновляется на ходу.'))};
   upd(false);
   for(const l of todo){
     if(my!==vkRun)return;
@@ -1737,7 +1803,350 @@ async function runVkCheck(auto,head){
   upd(true);renderAll(false);
 }
 
-function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;store.set("statuses",statuses);renderStats();renderList();
+/* ================= Cities, backup, shared base (GitHub), short links, domain checks, real sites ================= */
+const TRL={а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya"};
+const slugify=s=>String(s||"").toLowerCase().replace(/ё/g,"е").split("").map(c=>c in TRL?TRL[c]:c).join("").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);
+let notes=store.get("notes",{});      // lead id -> {t, at, by}
+let who=store.get("who",{});          // lead id -> {n, s, at}: who set the status
+let cityIdx=store.get("cities",{});   // slug -> {label, n, at, by}
+let pubs=store.get("pubs",{});        // lead id -> {slug, url, at, by}
+let reals=store.get("reals",{});      // lead id -> real-site editor fields
+let curCity=store.get("cur","");
+const chkLabel=()=>ghOn()||ON_NETLIFY?"Проверить сайты":"Проверить ВК";
+const myName=()=>(prof.n||"").trim()||"Без имени";
+const editing=()=>{const a=document.activeElement;return!!(a&&(a.id==="msg"||a.id==="note"))};
+const ago=t=>{const m=Math.round((Date.now()-t)/60000);if(m<1)return"только что";if(m<60)return m+" мин назад";const h=Math.round(m/60);if(h<24)return h+" ч назад";const d=Math.round(h/24);return d+" "+plural(d,["день","дня","дней"])+" назад"};
+
+/* ---------- cities ---------- */
+const cityRaw=slug=>store.get("city:"+slug,null);
+function saveCity(label,raw){
+  const slug=slugify(label)||"city";
+  store.setQ("city:"+slug,raw);
+  cityIdx[slug]={label,n:raw.length,at:Date.now(),by:myName()};store.set("cities",cityIdx);
+  curCity=slug;store.setQ("cur",slug);renderCityPick();uploadCities();
+  return slug;
+}
+async function uploadCities(){
+  if(!ghOn())return;
+  const up=store.get("cityUp",{});
+  for(const slug in cityIdx){
+    const c=cityIdx[slug];if(up[slug]===c.at)continue;
+    const raw=cityRaw(slug);if(!raw)continue;
+    try{await ghPutFile(DATA_REPO,"cities/"+slug+".json",JSON.stringify({label:c.label,at:c.at,by:c.by,raw}),"city: "+c.label);up[slug]=c.at;store.setQ("cityUp",up)}
+    catch(e){toast("Город «"+c.label+"» не отправился в общую базу: "+e.message);return}
+  }
+}
+async function openCity(slug){
+  const c=cityIdx[slug];if(!c)return;
+  let raw=cityRaw(slug);
+  if(!raw&&ghOn()){
+    prog('<span class="spin"></span>Загружаю «'+esc(c.label)+'» из общей базы…');
+    try{const f=await ghGetFile(DATA_REPO,"cities/"+slug+".json");if(f&&f.data&&f.data.raw){raw=f.data.raw;store.setQ("city:"+slug,raw);const up=store.get("cityUp",{});up[slug]=c.at;store.setQ("cityUp",up)}}
+    catch(e){prog("Не удалось загрузить город: "+esc(e.message),true);return}
+  }
+  if(!raw){prog("Список «"+esc(c.label)+"» есть только у "+esc(c.by||"друга")+". Подключите общую базу в профиле, и он появится здесь.",true);renderCityPick();return}
+  vkRun++;checking=false;runId++;
+  leads=enrich(raw);applyVk();isDemo=false;cityLabel=c.label;curCity=slug;store.setQ("cur",slug);selId=null;showN=200;filt="all";syncSeg();
+  $("#city").value=c.label;renderCityPick();
+  prog(esc(c.label)+': '+leads.length+' в списке'+(c.by&&c.by!==myName()?', искал '+esc(c.by):'')+', обновлено '+ago(c.at)+'.');
+  renderAll(true);
+}
+function renderCityPick(){
+  const sel=$("#cityPick");if(!sel)return;
+  const ks=Object.keys(cityIdx).sort((a,b)=>cityIdx[a].label.localeCompare(cityIdx[b].label,"ru"));
+  sel.hidden=!ks.length;
+  sel.innerHTML=(curCity&&cityIdx[curCity]?'':'<option value="" selected>Выберите город</option>')+ks.map(k=>'<option value="'+esc(k)+'"'+(k===curCity?" selected":"")+'>'+esc(cityIdx[k].label)+' · '+(cityIdx[k].n||0)+'</option>').join("")+(curCity&&cityIdx[curCity]?'<option value="__del">Убрать «'+esc(cityIdx[curCity].label)+'» из списка…</option>':'');
+}
+function delCity(slug){
+  const c=cityIdx[slug];if(!c)return;
+  if(!confirm("Убрать «"+c.label+"» из списка городов? Статусы и заметки сохранятся, город можно найти заново."))return renderCityPick();
+  delete cityIdx[slug];store.set("cities",cityIdx);try{localStorage.removeItem("bz:city:"+slug)}catch(e){}
+  if(curCity===slug){curCity="";store.setQ("cur","");leads=[];cityLabel="";selId=null;prog("");renderAll(false)}
+  renderCityPick();
+}
+
+/* ---------- backup ---------- */
+const BK_SKIP=new Set(["vk","vkpk","syncBase","cityUp","drafts","djobs"]);
+function backupData(){
+  const out={};
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k||!k.startsWith("bz:"))continue;const kk=k.slice(3);if(BK_SKIP.has(kk))continue;try{out[kk]=JSON.parse(localStorage.getItem(k))}catch(e){}}
+  if(out.profile){out.profile=Object.assign({},out.profile);delete out.profile.ghTok}
+  return{app:"bezsaita",v:1,at:new Date().toISOString(),by:myName(),data:out};
+}
+function downloadFile(name,text,type){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:type||"application/json"}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
+function exportBackup(){const b=backupData();downloadFile("bezsaita-kopiya-"+b.at.slice(0,10)+".json",JSON.stringify(b));store.setQ("bkAt",Date.now());toast("Копия сохранена в папку «Загрузки»")}
+async function importBackup(file){
+  let b=null;try{b=JSON.parse(await file.text())}catch(e){}
+  if(!b||b.app!=="bezsaita"||!b.data){toast("Это не файл копии Безсайта");return}
+  const D=b.data,MAPS=["statuses","sites","vkinfo","styles","notes","who","cities","pubs","reals"];
+  for(const k of Object.keys(D)){
+    if(MAPS.includes(k))store.setQ(k,Object.assign({},D[k],store.get(k,{})));
+    else if(k==="profile"){const cur=store.get("profile",{}),m=Object.assign({},D.profile);for(const f in cur)if(cur[f]!==""&&cur[f]!=null)m[f]=cur[f];store.setQ("profile",m)}
+    else if(store.get(k,null)==null)store.setQ(k,D[k]);
+  }
+  toast("Копия загружена, обновляю страницу");setTimeout(()=>location.reload(),800);
+}
+
+/* ---------- GitHub API ---------- */
+const ghOn=()=>!!(prof.ghTok&&prof.ghTok.length>20);
+async function gh(path,opt){
+  opt=opt||{};
+  const h=Object.assign({"Authorization":"Bearer "+prof.ghTok,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"},opt.body?{"Content-Type":"application/json"}:{},opt.headers||{});
+  try{return await fetch("https://api.github.com"+path,{method:opt.method||"GET",cache:"no-store",headers:h,body:opt.body?JSON.stringify(opt.body):undefined})}
+  catch(e){throw Object.assign(new Error("GitHub недоступен, проверьте интернет"),{code:0})}
+}
+async function ghFail(r){
+  let m="";try{m=(await r.json()).message||""}catch(e){}
+  const msg=r.status===401?"токен GitHub не подходит или истёк":
+    r.status===403?(/rate limit/i.test(m)?"GitHub просит подождать: слишком много запросов":"у токена нет права на запись (нужно Contents: Read and write)"):
+    r.status===404?"репозиторий не найден или токену не дан к нему доступ":"GitHub ответил "+r.status+(m?": "+m:"");
+  return Object.assign(new Error(msg),{code:r.status});
+}
+const b64e=s=>{const b=new TextEncoder().encode(s);let o="";for(let i=0;i<b.length;i+=0x8000)o+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000));return btoa(o)};
+const b64d=s=>new TextDecoder().decode(Uint8Array.from(atob(String(s).replace(/\s/g,"")),c=>c.charCodeAt(0)));
+const encPath=p=>p.split("/").map(encodeURIComponent).join("/");
+async function ghGetFile(repo,path,opt){
+  opt=opt||{};const q=opt.ref?"?ref="+encodeURIComponent(opt.ref):"";
+  const r=await gh("/repos/"+repo+"/contents/"+encPath(path)+q,{headers:opt.etag?{"If-None-Match":opt.etag}:{}});
+  if(r.status===304)return{status:304};
+  if(r.status===404)return null;
+  if(!r.ok)throw await ghFail(r);
+  const j=await r.json();let txt;
+  if(j.content&&j.encoding==="base64")txt=b64d(j.content);
+  else{const b=await gh("/repos/"+repo+"/git/blobs/"+j.sha);if(!b.ok)throw await ghFail(b);txt=b64d((await b.json()).content)}
+  let data=null;try{data=JSON.parse(txt)}catch(e){}
+  return{status:200,data,sha:j.sha,etag:r.headers.get("ETag")};
+}
+async function ghPut(repo,path,text,sha,msg,ref){
+  const body={message:msg||"update",content:b64e(text)};if(sha)body.sha=sha;if(ref)body.branch=ref;
+  const r=await gh("/repos/"+repo+"/contents/"+encPath(path),{method:"PUT",body});
+  if(!r.ok)throw await ghFail(r);
+  return(await r.json()).content.sha;
+}
+/* Create or overwrite a file, looking up its current sha when GitHub asks for it. */
+async function ghPutFile(repo,path,text,msg,ref,knownSha){
+  let sha=knownSha||null;
+  for(let i=0;i<3;i++){
+    try{return await ghPut(repo,path,text,sha,msg,ref)}
+    catch(e){
+      if(e.code!==409&&e.code!==422)throw e;
+      const r=await gh("/repos/"+repo+"/contents/"+encPath(path)+(ref?"?ref="+encodeURIComponent(ref):""));
+      if(r.ok)sha=(await r.json()).sha;else if(r.status===404)sha=null;else throw await ghFail(r);
+    }
+  }
+  throw new Error("GitHub не принял файл, попробуйте ещё раз");
+}
+async function ghDelete(repo,path,sha,msg){const r=await gh("/repos/"+repo+"/contents/"+encPath(path),{method:"DELETE",body:{message:msg||"delete",sha}});if(!r.ok&&r.status!==404)throw await ghFail(r)}
+
+/* ---------- shared base: 3-way merge of small maps through crm.json ---------- */
+const SMAP={
+  st:[()=>statuses,v=>{statuses=v},"statuses"],sites:[()=>sites,v=>{sites=v},"sites"],vk:[()=>vkinfo,v=>{vkinfo=v},"vkinfo"],
+  sty:[()=>styleOf,v=>{styleOf=v},"styles"],note:[()=>notes,v=>{notes=v},"notes"],who:[()=>who,v=>{who=v},"who"],
+  cities:[()=>cityIdx,v=>{cityIdx=v},"cities"],pub:[()=>pubs,v=>{pubs=v},"pubs"],real:[()=>reals,v=>{reals=v},"reals"]};
+const ST_RANK={client:6,replied:5,sent:4,no:3,site:2};
+const J=v=>v===undefined?"":JSON.stringify(v);
+function merge3(B,L,R,kind){
+  const out={},keys=new Set([...Object.keys(B),...Object.keys(L),...Object.keys(R)]);
+  for(const k of [...keys].sort()){
+    const b=J(B[k]),l=J(L[k]),r=J(R[k]);let v;
+    if(l===r||r===b)v=L[k];
+    else if(l===b)v=R[k];
+    else if(kind==="st")v=(ST_RANK[L[k]]||0)>=(ST_RANK[R[k]]||0)?L[k]:R[k];
+    else{const la=(L[k]&&L[k].at)||0,ra=(R[k]&&R[k].at)||0;v=ra>la?R[k]:L[k]}
+    if(v!==undefined)out[k]=v;
+  }
+  return out;
+}
+const sameMap=(a,b)=>{const ka=Object.keys(a),kb=Object.keys(b);if(ka.length!==kb.length)return false;for(const k of ka)if(J(a[k])!==J(b[k]))return false;return true};
+let syncBase=store.get("syncBase",null),lastRemote=null,remoteSha=null,remoteEtag=null,myRev=0,syncBusy=false,syncAgain=false,syncT=null,syncSt={ok:false,at:0,err:""};
+function scheduleSync(ms){if(!ghOn())return;clearTimeout(syncT);syncT=setTimeout(syncNow,ms==null?2500:ms)}
+async function syncNow(){
+  if(!ghOn())return;
+  if(syncBusy){syncAgain=true;return}
+  syncBusy=true;
+  try{
+    for(let attempt=0;attempt<5;attempt++){
+      const g=await ghGetFile(DATA_REPO,"crm.json",{etag:lastRemote&&remoteEtag?remoteEtag:null});
+      let remote;
+      if(g&&g.status===304)remote=lastRemote;
+      else if(!g){remote={};remoteSha=null;lastRemote=null}
+      else if(g.data&&(g.data.rev||0)<myRev){remote=lastRemote||g.data}    /* a stale read right after our own write */
+      else{remote=g.data||{};remoteSha=g.sha;remoteEtag=g.etag;lastRemote=remote}
+      const base=syncBase||{},merged={},changed=new Set();let localCh=false,remoteCh=false;
+      for(const key in SMAP){
+        const L=SMAP[key][0]()||{},R=remote[key]||{},B=base[key]||{};
+        const M=merge3(B,L,R,key);merged[key]=M;
+        if(!sameMap(M,L)){localCh=true;for(const k of new Set([...Object.keys(M),...Object.keys(L)]))if(J(M[k])!==J(L[k]))changed.add(key+"\u0001"+k)}
+        if(!sameMap(M,R))remoteCh=true;
+      }
+      /* Live state, the synced snapshot and the uploaded copy must never share objects:
+         a change made while the upload is in flight would otherwise look "already synced". */
+      const snap=JSON.stringify(merged),copy=()=>JSON.parse(snap);
+      if(localCh){const c=copy();for(const key in SMAP){SMAP[key][1](c[key]);store.setQ(SMAP[key][2],c[key])}afterRemote(changed)}
+      if(remoteCh){
+        const rev=Math.max(myRev,remote.rev||0)+1;
+        try{remoteSha=await ghPut(DATA_REPO,"crm.json",JSON.stringify(Object.assign({v:1,rev,at:Date.now(),by:myName()},copy())),remoteSha,"sync: "+myName());myRev=rev;lastRemote=Object.assign({rev},copy());remoteEtag=null}
+        catch(e){if(e.code===409||e.code===422){lastRemote=null;remoteEtag=null;await new Promise(r=>setTimeout(r,400+Math.random()*900));continue}throw e}
+      }
+      syncBase=copy();store.setQ("syncBase",syncBase);syncSt={ok:true,at:Date.now(),err:""};break;
+    }
+  }catch(e){syncSt={ok:false,at:Date.now(),err:e.message}}
+  finally{syncBusy=false;renderSyncLine();if(syncAgain){syncAgain=false;scheduleSync(1200)}}
+}
+function afterRemote(changed){
+  let cityCh=false,selCh=false;
+  for(const c of changed){const i=c.indexOf("\u0001"),key=c.slice(0,i),id=c.slice(i+1);if(key==="cities")cityCh=true;if(id===selId)selCh=true}
+  applyVk();renderStats();renderList();drawMarkers(false);
+  if(cityCh){renderCityPick();uploadCities()}
+  if(selCh&&!editing()&&!$("#siteDlg").open)renderDetail();
+}
+function renderSyncLine(){
+  const el=$("#syncln");if(!el)return;
+  if(!ghOn()){el.innerHTML=' · <a href="#" id="syncSet">Общая база с другом</a>';const a=$("#syncSet");if(a)a.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pG").focus(),50)};return}
+  el.innerHTML=syncSt.err?' · <span class="bad" title="'+esc(syncSt.err)+'">База: ошибка, '+esc(syncSt.err)+'</span>':syncSt.ok?' · База общая, обновлена '+new Date(syncSt.at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"}):' · База: подключаюсь…';
+}
+function friendCode(){return"BZ1."+b64e(JSON.stringify({t:prof.ghTok,k2:prof.k2||"",p:prof.price,d:prof.days}))}
+function parseFriendCode(s){s=String(s||"").trim();if(!/^BZ1\./.test(s))return null;try{return JSON.parse(b64d(s.slice(4)))}catch(e){return null}}
+async function ghCheck(){
+  const st=$("#ghStat");if(st)st.textContent="Проверяю доступ…";
+  try{
+    const r=await gh("/repos/"+DATA_REPO);if(!r.ok)throw await ghFail(r);
+    const j=await r.json();if(j.permissions&&!j.permissions.push)throw new Error("у токена нет права на запись (нужно Contents: Read and write)");
+    if(st)st.textContent="Подключено: общая база в "+DATA_REPO+".";
+    return true;
+  }catch(e){if(st)st.textContent="Не подключилось: "+e.message;syncSt={ok:false,at:Date.now(),err:e.message};renderSyncLine();return false}
+}
+
+/* ---------- short draft links: ?d=<slug>, data kept in the drafts branch of the site repo ---------- */
+let drafts=store.get("drafts",{});   // slug -> {h, sha}
+const dBusy={};let dWarned=false;
+function draftSlug(l){const b=slugify(brandName(l.name).word)||slugify(l.name)||"site";return b.slice(0,28).replace(/-+$/,"")+"-"+(hashStr(l.id+"|"+myName())%1679616).toString(36).padStart(4,"0")}   /* per person: a friend's draft never overwrites mine */
+const draftReady=(l,d)=>{const c=drafts[draftSlug(l)];return!!(c&&c.h===String(hashStr(JSON.stringify(d))))};
+async function ensureDraft(l,d){
+  const slug=draftSlug(l),txt=JSON.stringify(d),h=String(hashStr(txt)),cur=drafts[slug];
+  if(cur&&cur.h===h)return true;
+  if(dBusy[slug])return false;dBusy[slug]=1;
+  try{const sha=await ghPutFile(SITE_REPO,"d/"+slug+".json",txt,"draft: "+slug,"drafts",cur&&cur.sha);drafts[slug]={h,sha};store.setQ("drafts",drafts);return true}
+  catch(e){if(!dWarned){dWarned=true;toast("Короткая ссылка не создалась: "+e.message)}return false}
+  finally{delete dBusy[slug]}
+}
+
+/* ---------- domain check jobs, run by GitHub Actions in the data repo ---------- */
+let djobs=store.get("djobs",[]),pollT=null,jobMsg="";
+const jobPending=id=>djobs.some(j=>j.ids&&j.ids.includes(id));
+function setJobLine(html){jobMsg=html;const el=$("#jobln");if(el)el.innerHTML=html?' · '+html:''}
+async function startDomainJob(list,label,force){
+  if(!ghOn())return false;
+  const todo=list.filter(l=>(force||!(sites[l.id]&&(sites[l.id].found||sites[l.id].dom)))&&!jobPending(l.id)&&(force||stOf(l.id)==="new")).slice(0,400);
+  if(!todo.length)return false;
+  const id=Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,6);
+  const job={id,city:label||cityLabel,at:Date.now(),by:myName(),leads:todo.map(l=>({id:l.id,name:l.name,phone:l.phone||"",addr:l.addr||"",niche:kkOf(l.tag,l.niche,l.name)}))};
+  try{await ghPut(DATA_REPO,"jobs/"+id+".json",JSON.stringify(job),null,"check: "+job.city)}
+  catch(e){toast("Проверку доменов запустить не удалось: "+e.message);return false}
+  djobs.push({id,city:job.city,at:Date.now(),n:todo.length,ids:todo.map(l=>l.id)});store.setQ("djobs",djobs);
+  pollJobs(8000);return true;
+}
+async function pollJobs(delay){
+  clearTimeout(pollT);
+  if(!djobs.length||!ghOn()){setJobLine("");return}
+  if(delay){const n=djobs.reduce((a,j)=>a+j.n,0);setJobLine('<span class="spin"></span>GitHub проверяет домены: '+n+' '+plural(n,["бизнес","бизнеса","бизнесов"])+', обычно 1–3 минуты');pollT=setTimeout(()=>pollJobs(0),delay);return}
+  for(const j of djobs.slice()){
+    let f=null;try{f=await ghGetFile(DATA_REPO,"results/"+j.id+".json")}catch(e){}
+    if(f&&f.data){applyDomainResults(f.data);djobs=djobs.filter(x=>x.id!==j.id);ghDelete(DATA_REPO,"results/"+j.id+".json",f.sha,"read results").catch(()=>{})}
+    else if(Date.now()-j.at>45*60000)djobs=djobs.filter(x=>x.id!==j.id);
+  }
+  store.setQ("djobs",djobs);
+  if(djobs.length)pollJobs(20000);else setJobLine("");
+}
+function applyDomainResults(res){
+  const R=res.res||{};let found=0,n=0;
+  for(const id in R){
+    const r=R[id];n++;
+    if(r.found){found++;sites[id]={found:true,url:r.url,why:r.why||[],engine:"domain",at:Date.now()};if(stOf(id)==="new")statuses[id]="site"}
+    else if(!(sites[id]&&sites[id].found))sites[id]=Object.assign({},sites[id]||{},{found:false,dom:true,at:Date.now()});
+  }
+  store.set("sites",sites);store.set("statuses",statuses);
+  renderStats();renderList();drawMarkers(false);
+  if(selId&&R[selId]&&!editing())renderDetail();
+  toast("Домены проверены: "+n+", нашёлся сайт у "+found);
+}
+
+/* ---------- real client site: editor, preview, download, publish ---------- */
+function kOf(l){return KK[kkOf(l.tag,l.niche,l.name)]||KK.other}
+function svLines(l){
+  const K=kOf(l);
+  const rows=K.mod==="book"?(K.pr||[]):K.mod==="menu"?Object.values(K.menu||{}).flat():(K.cat||[]).map(x=>[x[0],"",x[1]]);
+  return rows.map(x=>[x[0],x[2]||"",x[1]||""].filter((v,i)=>i<2||v).join(" — ")).join("\n");
+}
+function parseSv(t){return String(t||"").split("\n").map(s=>s.trim()).filter(Boolean).map(s=>{const p=s.split(/\s+[—–-]\s+|\s*\|\s*/);return[p[0]||"",p.slice(2).join(" — "),p[1]||""]}).filter(x=>x[0])}
+function realData(l){
+  const r=reals[l.id]||{},d=Object.assign({},draftData(l));
+  delete d.m;d.real=1;
+  if(r.n)d.n=r.n;if(r.hd)d.hd=r.hd;if(r.ld)d.ld=r.ld;if(r.p!=null)d.p=r.p||undefined;if(r.a!=null)d.a=r.a||undefined;if(r.h!=null)d.h=r.h||undefined;
+  const sv=parseSv(r.sv);if(sv.length)d.sv=sv;
+  const pics=String(r.pics||"").split(/\s+/).filter(u=>/^https?:\/\//.test(u));if(pics.length)d.pics=pics;
+  if(r.bw)d.bw=r.bw;if(r.bt)d.bt=String(r.bt).replace(/^@|^https?:\/\/t\.me\//,"");
+  return d;
+}
+const realSlug=l=>slugify((reals[l.id]&&reals[l.id].slug)||brandName(l.name).word||l.name)||draftSlug(l);
+async function buildSiteHtml(d){
+  const r=await fetch(location.pathname,{cache:"no-store"});if(!r.ok)throw new Error("не загрузился шаблон ("+r.status+")");
+  let src=await r.text();
+  const title=esc(d.n+(d.a?" — "+d.a:""));
+  src=src.replace(/<title>[\s\S]*?<\/title>/,"<title>"+title+"</title>").replace(/<meta name="description"[^>]*>/,'<meta name="description" content="'+esc([d.ld||"",d.a||"",d.p||""].filter(Boolean).join(" · "))+'">');
+  return src.replace("</head>",'<script>window.__SITE__='+JSON.stringify(d).replace(/</g,"\\u003c")+';<\/script>\n</head>');
+}
+let realId=null;
+function openReal(l){
+  realId=l.id;const r=reals[l.id]||{},K=kOf(l);
+  $("#rN").value=r.n||l.name;$("#rHd").value=r.hd||"";$("#rLd").value=r.ld||K.lead||"";
+  $("#rP").value=r.p!=null?r.p:(l.phone||"");$("#rA").value=r.a!=null?r.a:(l.addr||"");$("#rH").value=r.h!=null?r.h:(l.tags.opening_hours||"");
+  $("#rSv").value=r.sv!=null?r.sv:svLines(l);$("#rPh").value=r.pics||(l.tags["dg:photo"]||"");
+  $("#rW").value=r.bw||"";$("#rT").value=r.bt||"";$("#rS").value=r.slug||realSlug(l);
+  $("#rSvL").textContent=K.mod==="book"?"Услуги и цены":K.mod==="menu"?"Меню":"Товары";
+  renderRealStat(l);$("#siteDlg").showModal();
+}
+function readReal(){
+  const l=leads.find(x=>x.id===realId);if(!l)return null;
+  reals[l.id]={n:$("#rN").value.trim(),hd:$("#rHd").value.trim(),ld:$("#rLd").value.trim(),p:$("#rP").value.trim(),a:$("#rA").value.trim(),h:$("#rH").value.trim(),
+    sv:$("#rSv").value,pics:$("#rPh").value.trim(),bw:$("#rW").value.trim(),bt:$("#rT").value.trim(),slug:slugify($("#rS").value)||realSlug(l),at:Date.now(),by:myName()};
+  store.set("reals",reals);return l;
+}
+function renderRealStat(l){
+  const p=pubs[l.id],el=$("#rStat");
+  el.innerHTML=p?'Опубликован: <a href="'+esc(p.url)+'" target="_blank" rel="noopener">'+esc(p.url.replace(/^https?:\/\//,""))+'</a> · '+esc(p.by||"")+', '+ago(p.at)+'. После правок нажмите «Опубликовать» ещё раз.':
+    ghOn()?'Сайт появится по адресу '+esc(SITE_BASE.replace(/^https?:\/\//,""))+'site/<b>'+esc(slugify($("#rS").value)||realSlug(l))+'</b>/ примерно через минуту после публикации.':
+    'Чтобы публиковать, подключите общую базу в профиле. Скачать HTML можно и без неё.';
+}
+
+/* ---------- profile: shared base, friend code, backup ---------- */
+$("#friendBtn").onclick=()=>{if(!ghOn()){toast("Сначала вставьте токен GitHub и сохраните профиль");return}copy(friendCode(),"Код скопирован. Отправьте его другу лично: он вставит его в профиле в поле «Токен GitHub или код от друга»")};
+$("#bkSave").onclick=exportBackup;
+$("#bkLoad").onclick=()=>$("#bkFile").click();
+$("#bkFile").onchange=e=>{const f=e.target.files&&e.target.files[0];if(f)importBackup(f);e.target.value=""};
+$("#cityPick").onchange=e=>{const v=e.target.value;if(v==="__del")delCity(curCity);else if(v)openCity(v)};
+
+/* real site dialog */
+$("#rS").addEventListener("input",()=>{const l=leads.find(x=>x.id===realId);if(l&&!pubs[l.id])renderRealStat(l)});
+$("#rPrev").onclick=async()=>{const l=readReal();if(!l)return;const w=window.open("about:blank","_blank");const u=location.origin+location.pathname+"#s/"+await packData(realData(l));if(w)w.location.href=u;else location.href=u};
+$("#rDl").onclick=async()=>{const l=readReal();if(!l)return;try{const html=await buildSiteHtml(realData(l));downloadFile((reals[l.id].slug||"site")+".html",html,"text/html");toast("Файл скачан. Переименуйте его в index.html и загрузите на хостинг клиента")}catch(e){toast("Не получилось: "+e.message)}};
+$("#rPub").onclick=async()=>{
+  const l=readReal();if(!l)return;
+  if(!ghOn()){toast("Для публикации подключите общую базу в профиле");return}
+  let slug=reals[l.id].slug;
+  const taken=Object.keys(pubs).find(id=>id!==l.id&&pubs[id].slug===slug);if(taken){slug=slug+"-"+(hashStr(l.id)%1296).toString(36);reals[l.id].slug=slug;$("#rS").value=slug;store.set("reals",reals)}
+  const b=$("#rPub");b.disabled=true;b.textContent="Публикую…";
+  try{
+    const html=await buildSiteHtml(realData(l));
+    await ghPutFile(SITE_REPO,"site/"+slug+"/index.html",html,"publish: "+slug,"gh-pages");
+    pubs[l.id]={slug,url:SITE_BASE+"site/"+slug+"/",at:Date.now(),by:myName()};store.set("pubs",pubs);
+    renderRealStat(l);toast("Опубликовано. Сайт откроется примерно через минуту");if(stOf(l.id)!=="client")setStatus(l.id,"client",true);
+  }catch(e){toast("Не опубликовалось: "+e.message)}
+  finally{b.disabled=false;b.textContent="Опубликовать"}
+};
+$("#rSave").onclick=()=>{readReal();toast("Сохранено")};
+
+function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;if(s==="new"||s==="site")delete who[id];else who[id]={n:myName(),s,at:Date.now()};store.set("who",who);store.set("statuses",statuses);renderStats();renderList();
   document.querySelectorAll("[data-st]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.st===(statuses[id]||"new"))));if(!quiet)toast("Статус: "+ST[s])}
 function copy(t,msg,after){const ok=()=>{toast(msg);after&&after()};
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok,()=>fallbackCopy(t,ok));else fallbackCopy(t,ok)}
@@ -1763,11 +2172,15 @@ $("#list").addEventListener("click",e=>{const li=e.target.closest(".lead");if(li
 $("#list").addEventListener("keydown",e=>{const li=e.target.closest(".lead");if(!li)return;
   if(e.key==="Enter"||e.key===" "){e.preventDefault();select(li.dataset.id)}
   if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();const n=e.key==="ArrowDown"?li.nextElementSibling:li.previousElementSibling;if(n&&n.dataset.id){select(n.dataset.id);const m=document.querySelector('.lead[data-id="'+CSS.escape(n.dataset.id)+'"]');m&&m.focus()}}});
-{const c=$("#chk");if(c)c.textContent=ON_NETLIFY&&!vkTok?"Проверить сайты":"Проверить ВК"}
-$("#chk").onclick=()=>{if(isDemo){toast("На примере проверка не работает: это выдуманные компании");return}if(!leads.length){toast("Сначала найдите бизнесы");return}
-  if(vkTok){if(/^Стоп/.test($("#chk").textContent)){vkRun++;$("#chk").textContent="Проверить ВК";prog("Проверка остановлена.");return}runVkCheck(false);return}
-  if(ON_NETLIFY){checkAll();return}
-  toast("Войдите через ВК в профиле: тогда парсер сам проверит группы");openProfile()};
+{const c=$("#chk");if(c)c.textContent=chkLabel()}
+$("#chk").onclick=async()=>{if(isDemo){toast("На примере проверка не работает: это выдуманные компании");return}if(!leads.length){toast("Сначала найдите бизнесы");return}
+  if(/^Стоп/.test($("#chk").textContent)){vkRun++;checking=false;$("#chk").textContent=chkLabel();prog("Проверка остановлена.");return}
+  let did=false;
+  if(ghOn())did=await startDomainJob(visible(),cityLabel);
+  if(vkTok){runVkCheck(false);return}
+  if(!ghOn()&&ON_NETLIFY){checkAll();return}
+  if(ghOn()){if(!did)toast("Домены у этого списка уже проверены. Войдите через ВК в профиле, чтобы проверить ещё и группы");return}
+  toast("Подключите общую базу или войдите через ВК в профиле: тогда сайты проверятся сами");openProfile()};
 $("#csv").onclick=()=>{
   if(!leads.length){toast("Сначала найдите бизнесы");return}
   const rows=[["Название","Тип","Адрес","Телефон","Email","Instagram","Часы","Теплота","Статус","OSM"]].concat(leads.map(l=>[l.name,l.kind,l.addr,l.phone,l.email,l.insta,l.tags.opening_hours||"",{hot:"горячий",warm:"тёплый",cold:"холодный"}[l.temp],ST[stOf(l.id)],l.id]));
@@ -1775,18 +2188,28 @@ $("#csv").onclick=()=>{
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="bezsaita-"+(cityLabel||"demo")+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 };
 
-function renderSource(){const el=$("#srcline");if(!el)return;const vkl=vkTok?' · ВК подключён':' · <a href="#" id="vkSrc">Подключить ВК</a>';el.innerHTML=prof.k2?'Ищем по 2ГИС. <a href="#" id="srcEdit">Изменить ключ</a>':'Ищем по OpenStreetMap. <a href="#" id="srcEdit">Подключить 2ГИС</a> — точнее для России';el.innerHTML+=vkl;const a=$("#srcEdit");a.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pK").focus(),50)};const v=$("#vkSrc");if(v)v.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pV").focus(),50)};const c=$("#chk");if(c)c.textContent=ON_NETLIFY&&!vkTok?"Проверить сайты":"Проверить ВК"}
+function renderSource(){const el=$("#srcline");if(!el)return;const vkl=vkTok?' · ВК подключён':' · <a href="#" id="vkSrc">Подключить ВК</a>';el.innerHTML=prof.k2?'Ищем по 2ГИС. <a href="#" id="srcEdit">Изменить ключ</a>':'Ищем по OpenStreetMap. <a href="#" id="srcEdit">Подключить 2ГИС</a> — точнее для России';el.innerHTML+=vkl+'<span id="syncln"></span><span id="jobln"></span>';renderSyncLine();setJobLine(jobMsg);const a=$("#srcEdit");a.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pK").focus(),50)};const v=$("#vkSrc");if(v)v.onclick=ev=>{ev.preventDefault();openProfile();setTimeout(()=>$("#pV").focus(),50)};const c=$("#chk");if(c&&!/^Стоп/.test(c.textContent))c.textContent=chkLabel()}
 renderSource();
 /* boot */
 const last=store.get("last",null);const c=store.get("city","");if(c)$("#city").value=c;
 $("#vkLogin").onclick=()=>{prof.vkapp=$("#pV").value.trim();store.set("profile",prof);vkLogin()};
 vkHandleReturn();
-if(last&&last.data&&last.data.length){leads=enrich(last.data);applyVk();cityLabel=last.city;prog(esc(cityLabel)+': '+leads.length+' без сайта (из прошлого поиска).')}
+if(!Object.keys(cityIdx).length&&last&&last.data&&last.data.length){const sl=slugify(last.city)||"city";store.setQ("city:"+sl,last.data);cityIdx[sl]={label:last.city,n:last.data.length,at:Date.now(),by:myName()};store.setQ("cities",cityIdx);curCity=sl;store.setQ("cur",sl)}
+renderCityPick();
+{const cr=curCity&&cityIdx[curCity]&&cityRaw(curCity);if(cr&&cr.length){leads=enrich(cr);applyVk();cityLabel=cityIdx[curCity].label;$("#city").value=cityLabel;prog(esc(cityLabel)+': '+leads.length+' в списке.')}}
+$("#siteDlg").addEventListener("close",()=>{if(realId){readReal();realId=null;renderDetail()}});
 renderAll(true);initMap().then(()=>{renderAll(true)});
+if(ghOn()){syncNow().then(()=>{uploadCities();if(!leads.length&&curCity&&cityIdx[curCity])openCity(curCity)});pollJobs(1500)}
+setInterval(()=>{if(ghOn()&&document.visibilityState==="visible")syncNow()},40000);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")scheduleSync(300)});
 }
 
 /* ROUTER */
-if(location.hash.startsWith("#s/"))bootSite();else bootTool();
+{const dq=new URLSearchParams(location.search).get("d");
+if(window.__SITE__)bootSite(window.__SITE__);
+else if(location.hash.startsWith("#s/"))bootSite();
+else if(dq)bootSite(null,dq);
+else bootTool();}
 </script>
 </body>
 </html>
