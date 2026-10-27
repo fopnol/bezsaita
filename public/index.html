@@ -1863,6 +1863,7 @@ if(!store.get("vkfix1",false)){let n=0;for(const id in vkinfo)if(vkinfo[id]&&vki
 function applyVk(){for(const l of leads){const v=vkinfo[l.id];if(v&&v.url&&!l.vk)l.vk=v.url}}
 let vkRun=0;
 async function runVkCheck(auto,head){
+  if(store.get("vkNoSearch",false)){if(!auto)toast("ВК не даёт искать группы через вход ВК. Ищите группу кнопкой «Найти в ВК» в карточке");return}
   if(!vkTok){if(!auto)toast("Войдите через ВК в профиле, и парсер будет проверять группы сам");return}
   const my=++vkRun;head=head||(cityLabel?esc(cityLabel)+': найдено '+leads.length+'. ':'');
   const todo=leads.filter(l=>!vkinfo[l.id]&&stOf(l.id)==="new").slice(0,auto?250:400);
@@ -1881,6 +1882,7 @@ async function runVkCheck(auto,head){
       if(e.code===5||e.code==="auth"){vkTok=null;store.set("vk",null);renderSource();prog(head+'Вход через ВК устарел. Откройте профиль и нажмите «Войти через ВК».',true);return}
       if(e.code===15||e.code===27||e.code===28||e.code===30){prog(head+'ВК не разрешил поиск групп: '+esc(e.message)+'. Проверьте, что бизнес-аккаунт VK ID подтверждён.',true);return}
       /* an error is not "no group": leave the business unchecked, and stop if VK keeps failing */
+      if(/profile type|current profile/i.test(e.message)){store.setQ("vkNoSearch",true);prog(head+'Группы ВК ищутся вручную: кнопка «Найти в ВК» в карточке бизнеса, ссылку вставьте в поле под ней.');if(btn)btn.textContent=chkLabel();return}
       if(++errRow>=3){store.set("vkinfo",vkinfo);prog(head+'Проверка ВК не работает, ВК отвечает: «'+esc(e.message)+'». Проверено '+done+' из '+total+'.',true);if(btn)btn.textContent=chkLabel();return}
     }
     done++;
@@ -1902,7 +1904,7 @@ let pubs=store.get("pubs",{});        // lead id -> {slug, url, at, by}
 let reals=store.get("reals",{});      // lead id -> real-site editor fields
 let queue=store.get("queue",{});      // task id -> {vk, text, name, city, lead, by, at, st, stBy}: messages for the friend to send by hand
 let curCity=store.get("cur","");
-const chkLabel=()=>ghOn()||ON_NETLIFY?"Проверить сайты":"Проверить ВК";
+const chkLabel=()=>ghOn()||ON_NETLIFY||store.get("vkNoSearch",false)?"Проверить сайты":"Проверить ВК";
 const myName=()=>(prof.n||"").trim()||"Без имени";
 const editing=()=>{const a=document.activeElement;return!!(a&&(a.id==="msg"||a.id==="note"))};
 const ago=t=>{const m=Math.round((Date.now()-t)/60000);if(m<1)return"только что";if(m<60)return m+" мин назад";const h=Math.round(m/60);if(h<24)return h+" ч назад";const d=Math.round(h/24);return d+" "+plural(d,["день","дня","дней"])+" назад"};
