@@ -183,6 +183,7 @@ body.tool [hidden]{display:none!important}
 .qbtns{flex-wrap:wrap;gap:8px}.qst{display:inline-flex;gap:6px;flex-wrap:wrap}.qst [aria-pressed=true]{background:var(--ink);color:var(--bg)}
 .qdel{margin-left:auto}
 .qempty{padding:28px;text-align:center;color:var(--muted)}
+.vkpaste{display:flex;gap:8px}.vkpaste input{flex:1}.vkpaste input.hl{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
 .qrows{display:grid;gap:8px}
 .qrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;text-align:left;cursor:pointer;width:100%;font:inherit;color:inherit}
 .qrow:hover{border-color:var(--ink)}.qrn{display:grid;gap:2px;min-width:0}.qrn b{font-size:16px}
@@ -1640,6 +1641,7 @@ async function renderDetail(){
    (who[l.id]&&s!=="new"&&s!=="site"?'<div class="verify">«'+ST[s]+'» поставил '+esc(who[l.id].n)+', '+ago(who[l.id].at)+'</div>':'')+
    '<div class="contacts">'+(l.phone?'<a class="c" href="'+esc(telHref(l.phone))+'">'+ico("phone")+'<code>'+esc(l.phone.split(/[;,]/)[0])+'</code></a>':'')+(l.email?'<span class="c">'+ico("mail")+'<code>'+esc(l.email)+'</code></span>':'')+(insta?'<a class="c" href="'+esc(insta)+'" target="_blank" rel="noopener">Instagram</a>':'')+(fb?'<a class="c" href="'+esc(fb)+'" target="_blank" rel="noopener">Facebook</a>':'')+(l.vk?'<a class="c" href="'+esc(l.vk)+'" target="_blank" rel="noopener">ВКонтакте</a>':'')+(l.tgc?'<a class="c" href="'+esc(l.tgc)+'" target="_blank" rel="noopener">Telegram</a>':'')+(l.dg?'<a class="c" href="https://2gis.ru/firm/'+esc(l.dg)+'" target="_blank" rel="noopener">Карточка в 2ГИС</a>':'<a class="c" href="https://2gis.ru/search/'+encodeURIComponent(l.name+' '+(cityLabel||''))+'" target="_blank" rel="noopener">Найти в 2ГИС</a><a class="c" href="https://yandex.ru/maps/?text='+encodeURIComponent(l.name+' '+(cityLabel||''))+'" target="_blank" rel="noopener">Яндекс Карты</a>')+
     '</div>'+(isDemo?'':siteBox(l,google))+
+   (isDemo||queuedLead(l.id)?(queuedLead(l.id)?'<div class="verify">В очереди на отправку: '+esc(queuedLead(l.id).vk.replace(/^https:\/\//,""))+'</div>':''):'<div class="vkpaste"><input type="text" id="vkUrl" placeholder="Ссылка на их группу ВК: vk.com/…" value="'+esc(l.vk||"")+'" aria-label="Ссылка на группу ВК"><button class="btn dark" id="vkSave" type="button">В очередь Косте</button></div>')+
    (isDemo?'':'<div class="notebox"><textarea id="note" rows="2" aria-label="Заметка" placeholder="Заметка, видна и другу: например, «владелец Андрей, перезвонить в пятницу»">'+esc(notes[l.id]?notes[l.id].t:"")+'</textarea>'+(notes[l.id]?'<small class="verify">'+esc(notes[l.id].by||"")+', '+ago(notes[l.id].at)+'</small>':'')+'</div>')+
    '<div class="grid2"><div><div class="phone"><iframe id="frame" title="Черновик сайта" src="'+esc(long)+'"></iframe></div>'+
      '<div class="under"><div class="styles" role="group" aria-label="Стиль">'+STYLE_NAMES.map((n,i)=>'<button class="btn sm" data-style="'+i+'" aria-pressed="'+(i===curSt)+'">'+n+'</button>').join("")+'</div></div>'+
@@ -1656,7 +1658,12 @@ async function renderDetail(){
   box.querySelectorAll("[data-style]").forEach(b=>b.onclick=()=>{styleOf[l.id]=+b.dataset.style;store.set("styles",styleOf);renderDetail()});
   const mark=()=>{if(stOf(l.id)==="new")setStatus(l.id,"sent",true)};
   ["#sWa","#sTg","#sMail"].forEach(s=>{const a=$(s);if(a)a.addEventListener("click",mark)});
-  const vkb=$("#sVk");if(vkb)vkb.addEventListener("click",()=>{copy(msg.body,vkScreen(l.vk)?"Текст скопирован: вставьте его в чат ВК (Ctrl+V)":"Текст скопирован. Найдите их сообщество и нажмите «Написать сообщение»",mark)});
+  const vkb=$("#sVk");if(vkb)vkb.addEventListener("click",()=>{if(vkScreen(l.vk))copy(msg.body,"Текст скопирован: вставьте его в чат ВК (Ctrl+V)",mark);else{vkWant={id:l.id,at:Date.now()};toast("Найдите их группу, скопируйте ссылку из адресной строки и вернитесь сюда")}});
+  const vu=$("#vkUrl"),vs=$("#vkSave");
+  if(vu&&vs){const go=()=>{const u=vkNormUrl(vu.value);if(!/vk\.(com|ru|me)\/[A-Za-z0-9_.]+/i.test(u)){toast("Вставьте ссылку на группу, например vk.com/boroda21");vu.focus();return}
+      l.vk=u;vkinfo[l.id]=Object.assign({},vkinfo[l.id]||{},{url:u,manual:true,none:undefined,at:Date.now()});delete vkinfo[l.id].none;store.set("vkinfo",vkinfo);vkWant=null;
+      const m=$("#msg");queueFromLead(l,m.value.trim()===String(m.dataset.orig||"").trim()?"":m.value)};
+    vs.onclick=go;vu.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();go()}});vu.addEventListener("paste",()=>setTimeout(()=>{if(/vk\.(com|ru)\//i.test(vu.value))vs.focus()},0))}
   $("#cpMsg").onclick=()=>copy($("#msg").value,"Сообщение скопировано",mark);
   $("#cpLink").onclick=()=>copy(link,"Ссылка на сайт скопирована");
   const nb=$("#nudgeBtn");if(nb)nb.onclick=openProfile;
@@ -1667,7 +1674,16 @@ async function renderDetail(){
   const ns=$("#notSite");if(ns)ns.onclick=()=>{sites[l.id]={found:false,manual:true,at:Date.now()};store.set("sites",sites);if(stOf(l.id)==="site")setStatus(l.id,"new",true);renderDetail()};
 }
 function vkScreen(v){const m=String(v||"").match(/vk\.(?:com|ru)\/([A-Za-z0-9_.]+)/i);return m&&!/^(search|feed|im|share)$/i.test(m[1])?m[1]:""}
-function vkHref(l){const sc=vkScreen(l.vk);return sc?"https://vk.me/"+sc:"https://vk.com/search?c%5Bsection%5D=communities&c%5Bq%5D="+encodeURIComponent(l.name+" "+(cityLabel||""))}
+let vkWant=null;
+const queuedLead=id=>{for(const k in queue){const t=queue[k];if(t.lead===id&&t.st==="new")return t}return null};
+/* Back from VK with a group link copied: put it into the box (Chrome asks once for clipboard access). */
+addEventListener("focus",async()=>{
+  if(!vkWant||Date.now()-vkWant.at>15*60000||vkWant.id!==selId||mode!=="search")return;
+  let t="";try{t=await navigator.clipboard.readText()}catch(e){return}
+  const m=String(t).match(/(?:https?:\/\/)?(?:m\.)?vk\.(?:com|ru)\/[A-Za-z0-9_.]+/i);if(!m)return;
+  const inp=$("#vkUrl");if(!inp)return;inp.value=vkNormUrl(m[0]);inp.classList.add("hl");$("#vkSave").focus();toast("Ссылка из буфера вставлена. Если это их группа, нажмите «В очередь Косте»");
+});
+function vkHref(l){const sc=vkScreen(l.vk);return sc?"https://vk.me/"+sc:"https://vk.com/search/communities?q="+encodeURIComponent((brandName(l.name.split(",")[0]).word||l.name)+" "+(cityLabel||""))}
 function siteBox(l,google){
   const vi=vkinfo[l.id],r=sites[l.id];
   const gl=' Можно <a href="'+esc(google)+'" target="_blank" rel="noopener">проверить в Google</a>.';
