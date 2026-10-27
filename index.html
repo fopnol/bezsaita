@@ -1786,7 +1786,11 @@ function vkCall(method,params){return new Promise(async(res,rej)=>{
   Object.entries(Object.assign({},params,{access_token:at,v:VK_V,callback:cb})).forEach(([k,v])=>u.searchParams.set(k,v));
   const t=setTimeout(()=>{cleanup();rej(new Error("ВК не ответил"))},15000);
   function cleanup(){clearTimeout(t);try{delete window[cb]}catch(e){window[cb]=undefined}s.remove()}
-  window[cb]=d=>{cleanup();if(d&&d.error)rej(Object.assign(new Error(d.error.error_msg||"ошибка ВК"),{code:d.error.error_code}));else res(d.response)};
+  window[cb]=d=>{cleanup();
+    if(d&&d.error)rej(Object.assign(new Error(d.error.error_msg||"ошибка ВК"),{code:d.error.error_code}));
+    /* inside execute a failed call does not throw: it comes back in execute_errors */
+    else if(d&&d.execute_errors&&d.execute_errors.length){const x=d.execute_errors[0];rej(Object.assign(new Error((x.method?x.method+": ":"")+(x.error_msg||"ошибка ВК")),{code:x.error_code}))}
+    else res(d.response)};
   s.onerror=()=>{cleanup();rej(new Error("ВК недоступен"))};
   s.src=u.toString();document.head.appendChild(s);
 })}
@@ -1824,6 +1828,7 @@ async function vkCheckLead(l){
   const brand=brandName(l.name).word;const q=(vkNorm(brand).length>=3?brand:l.name).slice(0,100);
   const code='var r=API.groups.search({"q":'+JSON.stringify(q)+',"count":10});var ids=r.items@.id;if(ids.length==0){return [];}return API.groups.getById({"group_ids":ids,"fields":"site,description,city,status,screen_name"});';
   const resp=await vkCall("execute",{code});
+  if(resp==null||resp===false)throw Object.assign(new Error("ВК вернул пустой ответ на поиск групп"),{code:"empty"});
   const groups=Array.isArray(resp)?resp:(resp&&resp.groups)||[];
   const g=vkPick(l,groups);
   if(!g){vkinfo[l.id]={none:true,at:Date.now()};return{found:false}}
@@ -1838,6 +1843,7 @@ async function vkCheckLead(l){
   }
   return{found:!!s.length,url};
 }
+if(!store.get("vkfix1",false)){let n=0;for(const id in vkinfo)if(vkinfo[id]&&vkinfo[id].none){delete vkinfo[id];n++}store.set("vkinfo",vkinfo);store.setQ("vkfix1",true)}
 function applyVk(){for(const l of leads){const v=vkinfo[l.id];if(v&&v.url&&!l.vk)l.vk=v.url}}
 let vkRun=0;
 async function runVkCheck(auto,head){
@@ -1848,17 +1854,18 @@ async function runVkCheck(auto,head){
   const total=todo.length;let done=0,withSite=0,groups=0;
   const btn=$("#chk");
   const upd=fin=>{if(btn)btn.textContent=fin?chkLabel():"Стоп ("+done+"/"+total+")";prog(head+(fin?'':'<span class="spin"></span>')+'Проверяю группы ВК: '+done+' из '+total+'. Нашлась группа: '+groups+', из них с сайтом: '+withSite+(fin?'. Бизнесы с сайтом убраны из списка (фильтр «Есть сайт»).':'. Список обновляется на ходу.'))};
-  upd(false);
+  upd(false);let errRow=0;
   for(const l of todo){
     if(my!==vkRun)return;
     try{
-      const r=await vkCheckLead(l);if(r.url)groups++;if(r.found)withSite++;
+      const r=await vkCheckLead(l);errRow=0;if(r.url)groups++;if(r.found)withSite++;
       if(r.url&&!l.vk)l.vk=r.url;
     }catch(e){
       if((e.code===6||e.code===9)&&(l._vkRetry=(l._vkRetry||0)+1)<4){await new Promise(r=>setTimeout(r,1500));todo.push(l);continue}
       if(e.code===5||e.code==="auth"){vkTok=null;store.set("vk",null);renderSource();prog(head+'Вход через ВК устарел. Откройте профиль и нажмите «Войти через ВК».',true);return}
       if(e.code===15||e.code===27||e.code===28||e.code===30){prog(head+'ВК не разрешил поиск групп: '+esc(e.message)+'. Проверьте, что бизнес-аккаунт VK ID подтверждён.',true);return}
-      vkinfo[l.id]={none:true,err:String(e.message),at:Date.now()};
+      /* an error is not "no group": leave the business unchecked, and stop if VK keeps failing */
+      if(++errRow>=3){store.set("vkinfo",vkinfo);prog(head+'Проверка ВК не работает, ВК отвечает: «'+esc(e.message)+'». Проверено '+done+' из '+total+'.',true);if(btn)btn.textContent=chkLabel();return}
     }
     done++;
     if(done%5===0||done===total){store.set("vkinfo",vkinfo);store.set("sites",sites);store.set("statuses",statuses);renderStats();renderList();if(l.id===selId)renderDetail()}
