@@ -163,9 +163,26 @@ dialog::backdrop{background:rgba(10,14,12,.45)}
 .dlgfoot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 dialog.wide{width:min(720px,calc(100vw - 32px))}
 .field.sep{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+body.tool [hidden]{display:none!important}
+.appbar .cityrow{min-width:260px}
 .citypick{width:auto;max-width:220px;padding:8px 10px}
 .notebox{display:grid;gap:4px}.notebox textarea{min-height:44px;resize:vertical;font-size:14px}
 .bad{color:var(--accent)}
+.mseg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-wrap:wrap}
+.mseg button{border:0;background:none;padding:7px 12px;cursor:pointer;font-size:13.5px;color:var(--muted)}
+.mseg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.mseg button b{margin-left:6px;background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:0 6px;font-size:12px}
+.mseg button b:empty{display:none}
+.qview{max-width:980px;margin:18px auto;padding:0 16px;display:grid;gap:12px}
+.qtop{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.qtop h2{margin:0}
+.qadd{padding:12px 16px}.qadd summary{cursor:pointer;font-weight:600}
+.qitem{padding:16px;display:grid;gap:10px}
+.qhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.qname{font-size:17px}
+.qlink{word-break:break-all}
+.qitem textarea{min-height:150px;resize:vertical;line-height:1.5;font-size:14px}
+.qbtns{flex-wrap:wrap;gap:8px}.qst{display:inline-flex;gap:6px;flex-wrap:wrap}.qst [aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.qdel{margin-left:auto}
+.qempty{padding:28px;text-align:center;color:var(--muted)}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;z-index:1000;box-shadow:0 10px 30px -10px rgba(0,0,0,.4)}
 
 @media (max-width:1100px){.grid2{grid-template-columns:minmax(0,1fr)}}
@@ -1176,7 +1193,7 @@ function sessionStorageSafe(k){try{const v=sessionStorage.getItem(k);sessionStor
    ============================================================ */
 function bootTool(){
 const $=s=>document.querySelector(s);
-const SYNC_KEYS=new Set(["statuses","sites","vkinfo","styles","notes","who","cities","pubs","reals"]);
+const SYNC_KEYS=new Set(["statuses","sites","vkinfo","styles","notes","who","cities","pubs","reals","queue"]);
 const store={get(k,d){try{const v=localStorage.getItem("bz:"+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
   setQ(k,v){try{localStorage.setItem("bz:"+k,JSON.stringify(v))}catch(e){}},
   set(k,v){this.setQ(k,v);if(SYNC_KEYS.has(k)){try{scheduleSync()}catch(e){}}}};
@@ -1194,7 +1211,7 @@ let styleOf=store.get("styles",{});
 let leads=[],cityLabel="",isDemo=false,selId=null,filt="all",channel="chat",showN=200,map=null,layer=null,markers={},busy=false;
 
 $("#app").innerHTML=
-'<header class="appbar" id="appbar"><div class="appbar-in"><div class="logo">Без<s>сайта</s></div>'+
+'<header class="appbar" id="appbar"><div class="appbar-in"><div class="logo">Без<s>сайта</s></div><div class="mseg" role="group" aria-label="Раздел"><button data-m="search" aria-pressed="true">Поиск</button><button data-m="queue" aria-pressed="false">Отправка<b id="qn"></b></button></div>'+
  '<form class="cityrow" id="sform"><input type="text" id="city" placeholder="Город, например: Чебоксары" autocomplete="off" aria-label="Город"><button class="btn primary" id="go" type="submit">Найти</button></form><select id="cityPick" class="citypick" aria-label="Мои города" hidden></select>'+
  '<div class="stats" id="stats"></div><button class="btn sm ghost" id="profBtn">'+ico("user")+'Профиль</button></div>'+
  '<div class="toolbar"><div class="niches" id="niches">'+NICHES.map(n=>'<label class="chip"><input type="checkbox" data-n="'+n.id+'"'+(nicheOn[n.id]?" checked":"")+'><span>'+n.ru+'</span></label>').join("")+'</div>'+
@@ -1207,6 +1224,7 @@ $("#app").innerHTML=
  '<ul class="list" id="list" role="listbox" aria-label="Бизнесы"></ul>'+
  '<div class="mapcard" hidden><div id="map"></div><div class="maplegend"><span><i class="dot hot"></i>горячий</span><span><i class="dot warm"></i>тёплый</span><span><i class="dot cold"></i>холодный</span></div></div>'+
 '</aside><main class="main"><section class="card" id="detail"></section></main></div>'+
+'<div class="qview" id="qview" hidden></div>'+
 '<dialog id="dlg"><form method="dialog" class="dlg" id="pform"><h3>Мой профиль</h3><p>Эти данные попадут в сообщение и в плашку внизу каждого черновика сайта, чтобы владелец мог с вами связаться.</p>'+
  '<div class="fgrid"><div class="field full"><label for="pN">Имя</label><input type="text" id="pN"></div>'+
  '<div class="field"><label for="pW">WhatsApp (с кодом страны)</label><input type="tel" id="pW" placeholder="+371 2000 0000"></div>'+
@@ -1584,7 +1602,7 @@ async function renderDetail(){
      (prof.n?'':'<div class="nudge">Добавьте имя и контакты, чтобы владелец мог вам ответить. <button id="nudgeBtn">Заполнить профиль</button></div>')+
      '<textarea class="msg" id="msg" aria-label="Текст сообщения">'+esc(full)+'</textarea>'+
      '<div class="send">'+(channel==="chat"?'<a class="btn primary" id="sVk" href="'+esc(vkHref(l))+'" target="_blank" rel="noopener">'+ico("vk")+(vkScreen(l.vk)?'ВКонтакте':'Найти в ВК')+'</a><a class="btn" id="sWa" href="'+esc(wa)+'" target="_blank" rel="noopener">'+ico("wa")+'WhatsApp</a><a class="btn" id="sTg" href="'+esc(tg)+'" target="_blank" rel="noopener">'+ico("tg")+'Telegram</a>':'<a class="btn primary" id="sMail" href="'+esc(mail)+'">'+ico("mail")+'Открыть письмо</a>')+
-     '<button class="btn" id="cpMsg">'+ico("copy")+'Скопировать</button></div>'+
+     '<button class="btn" id="cpMsg">'+ico("copy")+'Скопировать</button>'+(isDemo?'':'<button class="btn dark" id="toQ" title="Ссылка на группу ВК и этот текст попадут во вкладку «Отправка»">В очередь на отправку</button>')+'</div>'+
      '<p class="verify" style="margin:0">Цена '+esc(rub(prof.price))+' ₽ и срок '+esc(prof.days)+' дн. меняются в профиле. После отправки статус станет «Написал».</p></div></div></div>';
   box.querySelectorAll("[data-st]").forEach(b=>b.onclick=()=>setStatus(l.id,b.dataset.st));
   box.querySelectorAll("[data-ch]").forEach(b=>b.onclick=()=>{channel=b.dataset.ch;renderDetail()});
@@ -1596,6 +1614,7 @@ async function renderDetail(){
   $("#cpLink").onclick=()=>copy(link,"Ссылка на сайт скопирована");
   const nb=$("#nudgeBtn");if(nb)nb.onclick=openProfile;
   const rb=$("#realBtn");if(rb)rb.onclick=()=>openReal(l);
+  const tq=$("#toQ");if(tq)tq.onclick=()=>queueFromLead(l,$("#msg").value);
   const nt=$("#note");if(nt)nt.addEventListener("input",()=>{clearTimeout(nt._t);nt._t=setTimeout(()=>{const t=nt.value.trim();if(t)notes[l.id]={t,at:Date.now(),by:myName()};else delete notes[l.id];store.set("notes",notes);renderList()},700)});
   const fs=$("#findSite");if(fs)fs.onclick=async()=>{fs.disabled=true;if(ghOn()){fs.textContent="Отправил на проверку…";if(!await startDomainJob([l],cityLabel,true))fs.textContent="Уже проверяется";return}fs.textContent="Ищу сайт…";await checkSite(l);if(selId===l.id)renderDetail()};
   const ns=$("#notSite");if(ns)ns.onclick=()=>{sites[l.id]={found:false,manual:true,at:Date.now()};store.set("sites",sites);if(stOf(l.id)==="site")setStatus(l.id,"new",true);renderDetail()};
@@ -1811,6 +1830,7 @@ let who=store.get("who",{});          // lead id -> {n, s, at}: who set the stat
 let cityIdx=store.get("cities",{});   // slug -> {label, n, at, by}
 let pubs=store.get("pubs",{});        // lead id -> {slug, url, at, by}
 let reals=store.get("reals",{});      // lead id -> real-site editor fields
+let queue=store.get("queue",{});      // task id -> {vk, text, name, city, lead, by, at, st, stBy}: messages for the friend to send by hand
 let curCity=store.get("cur","");
 const chkLabel=()=>ghOn()||ON_NETLIFY?"Проверить сайты":"Проверить ВК";
 const myName=()=>(prof.n||"").trim()||"Без имени";
@@ -1878,7 +1898,7 @@ function exportBackup(){const b=backupData();downloadFile("bezsaita-kopiya-"+b.a
 async function importBackup(file){
   let b=null;try{b=JSON.parse(await file.text())}catch(e){}
   if(!b||b.app!=="bezsaita"||!b.data){toast("Это не файл копии Безсайта");return}
-  const D=b.data,MAPS=["statuses","sites","vkinfo","styles","notes","who","cities","pubs","reals"];
+  const D=b.data,MAPS=["statuses","sites","vkinfo","styles","notes","who","cities","pubs","reals","queue"];
   for(const k of Object.keys(D)){
     if(MAPS.includes(k))store.setQ(k,Object.assign({},D[k],store.get(k,{})));
     else if(k==="profile"){const cur=store.get("profile",{}),m=Object.assign({},D.profile);for(const f in cur)if(cur[f]!==""&&cur[f]!=null)m[f]=cur[f];store.setQ("profile",m)}
@@ -1942,7 +1962,7 @@ async function ghDelete(repo,path,sha,msg){const r=await gh("/repos/"+repo+"/con
 const SMAP={
   st:[()=>statuses,v=>{statuses=v},"statuses"],sites:[()=>sites,v=>{sites=v},"sites"],vk:[()=>vkinfo,v=>{vkinfo=v},"vkinfo"],
   sty:[()=>styleOf,v=>{styleOf=v},"styles"],note:[()=>notes,v=>{notes=v},"notes"],who:[()=>who,v=>{who=v},"who"],
-  cities:[()=>cityIdx,v=>{cityIdx=v},"cities"],pub:[()=>pubs,v=>{pubs=v},"pubs"],real:[()=>reals,v=>{reals=v},"reals"]};
+  cities:[()=>cityIdx,v=>{cityIdx=v},"cities"],pub:[()=>pubs,v=>{pubs=v},"pubs"],real:[()=>reals,v=>{reals=v},"reals"],q:[()=>queue,v=>{queue=v},"queue"]};
 const ST_RANK={client:6,replied:5,sent:4,no:3,site:2};
 const J=v=>v===undefined?"":JSON.stringify(v);
 function merge3(B,L,R,kind){
@@ -1994,8 +2014,10 @@ async function syncNow(){
   finally{syncBusy=false;renderSyncLine();if(syncAgain){syncAgain=false;scheduleSync(1200)}}
 }
 function afterRemote(changed){
-  let cityCh=false,selCh=false;
-  for(const c of changed){const i=c.indexOf("\u0001"),key=c.slice(0,i),id=c.slice(i+1);if(key==="cities")cityCh=true;if(id===selId)selCh=true}
+  let cityCh=false,selCh=false,qCh=false,qNew=0;
+  for(const c of changed){const i=c.indexOf("\u0001"),key=c.slice(0,i),id=c.slice(i+1);if(key==="cities")cityCh=true;if(id===selId)selCh=true;if(key==="q"){qCh=true;const t=queue[id];if(t&&t.st==="new"&&t.by!==myName()&&!qSeen[id]){qNew++;qSeen[id]=1}}}
+  if(qCh){renderQBadge();if(mode==="queue"&&!qEditing())renderQueue()}
+  if(qNew)toast("Новых сообщений на отправку: "+qNew+". Вкладка «Отправка»");
   applyVk();renderStats();renderList();drawMarkers(false);
   if(cityCh){renderCityPick();uploadCities()}
   if(selCh&&!editing()&&!$("#siteDlg").open)renderDetail();
@@ -2145,6 +2167,65 @@ $("#rPub").onclick=async()=>{
   finally{b.disabled=false;b.textContent="Опубликовать"}
 };
 $("#rSave").onclick=()=>{readReal();toast("Сохранено")};
+/* ================= Outbox: messages queued for the friend, who sends them by hand ================= */
+let mode=store.get("mode","search"),qFilt="new",qSeen={};
+for(const id in queue)qSeen[id]=1;
+const qEditing=()=>{const a=document.activeElement;return!!(a&&a.closest&&a.closest("#qview")&&/TEXTAREA|INPUT/.test(a.tagName))};
+const Q_ST={new:"Ждёт отправки",sent:"Отправил",replied:"Ответили",client:"Клиент",no:"Отказ"};
+function vkNormUrl(u){u=String(u||"").trim();if(!u)return"";if(!/^https?:\/\//i.test(u))u="https://"+u.replace(/^\/+/,"");return u.replace(/^http:/i,"https:").replace(/\/\/(m\.)?vk\.ru\//i,"//vk.com/").replace(/\/\/m\.vk\.com\//i,"//vk.com/").replace(/[?#].*$/,"").replace(/\/+$/,"")}
+function vkChat(u){const sc=vkScreen(u);return sc?"https://vk.me/"+sc:u}
+function renderQBadge(){const n=Object.values(queue).filter(t=>t.st==="new").length;const b=$("#qn");if(b)b.textContent=n?" "+n:""}
+function setMode(m){mode=m;store.setQ("mode",m);document.querySelectorAll(".mseg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.m===m)));
+  $(".shell").hidden=m!=="search";$("#qview").hidden=m!=="queue";$("#niches").hidden=m!=="search";$("#prog").hidden=m!=="search";
+  if(m==="queue")renderQueue();else{renderAll(false);if(map)map.invalidateSize()}syncTop()}
+function addTask(t){const id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);queue[id]=Object.assign({st:"new",by:myName(),at:Date.now()},t);qSeen[id]=1;store.set("queue",queue);renderQBadge();return id}
+function queueFromLead(l,text){
+  const vk=vkNormUrl(l.vk||(vkinfo[l.id]&&vkinfo[l.id].url)||"");
+  const old=Object.entries(queue).find(([id,t])=>t.lead===l.id&&t.st==="new");
+  if(!vk){setMode("queue");const d=$("#qadd");if(d)d.open=true;$("#qName").value=l.name;$("#qText").value=text;$("#qLead").value=l.id;$("#qVk").focus();toast("Вставьте ссылку на их группу ВК и нажмите «Добавить»");return}
+  if(old){old[1].text=text;old[1].vk=vk;old[1].at=Date.now();store.set("queue",queue);toast("Обновил текст в очереди: "+l.name);return}
+  addTask({vk,text,name:l.name,city:cityLabel,lead:l.id});toast("В очереди на отправку: "+l.name+(ghOn()?"":". Подключите общую базу, чтобы её увидел друг"));
+}
+function setTaskSt(id,st){
+  const t=queue[id];if(!t)return;
+  t.st=st;t.stBy=myName();t.at=Date.now();store.set("queue",queue);
+  if(t.lead){if(st==="new"){if(statuses[t.lead]&&statuses[t.lead]!=="site"){delete statuses[t.lead];delete who[t.lead]}}else{statuses[t.lead]=st;who[t.lead]={n:myName(),s:st,at:Date.now()}}store.set("statuses",statuses);store.set("who",who);renderStats();renderList()}
+  renderQBadge();renderQueue();
+}
+function renderQueue(){
+  const box=$("#qview");if(!box)return;
+  const all=Object.entries(queue).map(([id,t])=>Object.assign({id},t));
+  const nNew=all.filter(t=>t.st==="new").length,nDone=all.length-nNew;
+  const list=all.filter(t=>qFilt==="all"||(qFilt==="new"?t.st==="new":t.st!=="new")).sort((a,b)=>qFilt==="new"?a.at-b.at:b.at-a.at);
+  box.innerHTML='<div class="qtop"><h2>Отправка</h2><div class="mseg" role="group" aria-label="Фильтр"><button data-qf="new" aria-pressed="'+(qFilt==="new")+'">Ждут отправки · '+nNew+'</button><button data-qf="done" aria-pressed="'+(qFilt==="done")+'">Отправленные · '+nDone+'</button><button data-qf="all" aria-pressed="'+(qFilt==="all")+'">Все</button></div></div>'+
+   '<p class="verify" style="margin:0">Сюда попадают сообщения для отправки: ссылка на группу ВК и готовый текст. «Открыть чат ВК» копирует текст и открывает переписку с группой: вставьте текст (Ctrl+V), отправьте и нажмите «Отправил».'+(ghOn()?'':' <b>Сейчас очередь видна только в этом браузере.</b> <a href="#" id="qGh">Подключите общую базу</a>, чтобы её видел друг.')+'</p>'+
+   '<details class="card qadd" id="qadd"><summary>Добавить вручную</summary><div class="fgrid" style="margin-top:12px"><div class="field full"><label for="qVk">Ссылка на группу ВК</label><input type="text" id="qVk" placeholder="https://vk.com/…"></div><div class="field full"><label for="qName">Название бизнеса (необязательно)</label><input type="text" id="qName"></div><div class="field full"><label for="qText">Текст для клиента</label><textarea id="qText" rows="6"></textarea></div><input type="hidden" id="qLead"></div><div class="lrow" style="margin-top:10px"><button class="btn primary" id="qAddBtn" type="button">Добавить</button></div></details>'+
+   (list.length?list.map(t=>{const vk=t.vk||"",chat=vkChat(vk);return'<article class="card qitem" data-q="'+esc(t.id)+'"><div class="qhead"><div style="min-width:0"><b class="qname">'+esc(t.name||vkScreen(vk)||"Без названия")+'</b><div class="verify">'+(t.city?esc(t.city)+' · ':'')+'добавил '+esc(t.by||"")+', '+ago(t.at)+(t.st!=="new"&&t.stBy?' · «'+Q_ST[t.st]+'»: '+esc(t.stBy):'')+'</div></div><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></div>'+
+      (vk?'<a class="verify qlink" href="'+esc(vk)+'" target="_blank" rel="noopener">'+esc(vk.replace(/^https:\/\//,""))+'</a>':'<span class="verify bad">Нет ссылки на ВК</span>')+
+      '<textarea class="qtext" aria-label="Текст сообщения">'+esc(t.text||"")+'</textarea>'+
+      '<div class="lrow qbtns">'+(vk?'<a class="btn primary" data-act="chat" href="'+esc(chat)+'" target="_blank" rel="noopener">'+ico("vk")+'Открыть чат ВК</a>':'')+'<button class="btn" data-act="copy" type="button">'+ico("copy")+'Скопировать текст</button>'+
+      '<span class="qst">'+["sent","replied","client","no"].map(k=>'<button class="btn sm" type="button" data-st2="'+k+'" aria-pressed="'+(t.st===k)+'">'+Q_ST[k]+'</button>').join("")+(t.st!=="new"?'<button class="btn sm" type="button" data-st2="new">Вернуть в очередь</button>':'')+'</span>'+
+      '<button class="btn sm ghost qdel" data-act="del" type="button">Удалить</button></div></article>'}).join(""):'<div class="card qempty">'+(qFilt==="new"?'Всё отправлено. Новые сообщения появятся здесь, когда их добавят из карточки бизнеса кнопкой «В очередь на отправку».':'Здесь пока пусто.')+'</div>');
+  const g=$("#qGh");if(g)g.onclick=e=>{e.preventDefault();openProfile();setTimeout(()=>$("#pG").focus(),50)};
+}
+$("#qview").addEventListener("click",e=>{
+  const f=e.target.closest("[data-qf]");if(f){qFilt=f.dataset.qf;renderQueue();return}
+  if(e.target.closest("#qAddBtn")){
+    const vk=vkNormUrl($("#qVk").value),text=$("#qText").value.trim(),name=$("#qName").value.trim(),lead=$("#qLead").value||undefined;
+    if(!/vk\.(com|ru|me)\//i.test(vk)){toast("Вставьте ссылку на группу ВК, например https://vk.com/boroda21");$("#qVk").focus();return}
+    if(!text){toast("Вставьте текст для клиента");$("#qText").focus();return}
+    const ll=lead&&leads.find(x=>x.id===lead);if(ll&&!ll.vk)ll.vk=vk;
+    addTask({vk,text,name:name||(ll&&ll.name)||"",city:ll?cityLabel:"",lead});qFilt="new";renderQueue();toast("Добавлено в очередь");return}
+  const it=e.target.closest(".qitem");if(!it)return;const id=it.dataset.q,t=queue[id];if(!t)return;
+  const s2=e.target.closest("[data-st2]");if(s2){setTaskSt(id,s2.dataset.st2);return}
+  const a=e.target.closest("[data-act]");if(!a)return;
+  const txt=it.querySelector(".qtext").value;
+  if(a.dataset.act==="chat"){copy(txt,"Текст скопирован: вставьте его в чат (Ctrl+V), отправьте и нажмите «Отправил»")}
+  else if(a.dataset.act==="copy"){copy(txt,"Текст скопирован")}
+  else if(a.dataset.act==="del"){if(confirm("Удалить «"+(t.name||t.vk)+"» из очереди?")){delete queue[id];store.set("queue",queue);renderQBadge();renderQueue()}}
+});
+$("#qview").addEventListener("input",e=>{const ta=e.target.closest(".qtext");if(!ta)return;const id=ta.closest(".qitem").dataset.q;clearTimeout(ta._t);ta._t=setTimeout(()=>{if(queue[id]){queue[id].text=ta.value;queue[id].at=Date.now();store.set("queue",queue)}},700)});
+document.querySelectorAll("#appbar .mseg button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
 
 function setStatus(id,s,quiet){if(s==="new")delete statuses[id];else statuses[id]=s;if(s==="new"||s==="site")delete who[id];else who[id]={n:myName(),s,at:Date.now()};store.set("who",who);store.set("statuses",statuses);renderStats();renderList();
   document.querySelectorAll("[data-st]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.st===(statuses[id]||"new"))));if(!quiet)toast("Статус: "+ST[s])}
@@ -2199,6 +2280,7 @@ renderCityPick();
 {const cr=curCity&&cityIdx[curCity]&&cityRaw(curCity);if(cr&&cr.length){leads=enrich(cr);applyVk();cityLabel=cityIdx[curCity].label;$("#city").value=cityLabel;prog(esc(cityLabel)+': '+leads.length+' в списке.')}}
 $("#siteDlg").addEventListener("close",()=>{if(realId){readReal();realId=null;renderDetail()}});
 renderAll(true);initMap().then(()=>{renderAll(true)});
+renderQBadge();if(mode==="queue")setMode("queue");
 if(ghOn()){syncNow().then(()=>{uploadCities();if(!leads.length&&curCity&&cityIdx[curCity])openCity(curCity)});pollJobs(1500)}
 setInterval(()=>{if(ghOn()&&document.visibilityState==="visible")syncNow()},40000);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")scheduleSync(300)});
