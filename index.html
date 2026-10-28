@@ -1863,7 +1863,7 @@ async function vRecord(l,R,cv,onStage){
   const P=R.P,dark=lum(P.bg)<.2;
   const BG=dark?P.bg:vMix(P.ink,"#000000",.25),FG=dark?P.ink:P.bg;
   const vCon=(a,b)=>{const x=lum(a),y=lum(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
-  let A=P.acc;for(let i=0;i<10&&vCon(A,BG)<3.8;i++)A=vMix(A,"#ffffff",.16);
+  let A=P.acc;for(let i=0;i<10&&vCon(A,BG)<4.8;i++)A=vMix(A,"#ffffff",.16);
   const AT=lum(A)>.42?"#111111":"#ffffff";
   const disp=s=>R.fw+" "+s+"px "+fam,body=(w,s)=>w+" "+s+"px "+bodyFam;
   const nm=String(l.name||"").split(",")[0].trim()||l.name,bn=brandName(nm),bw=nm.length<=34?nm:(bn.word||nm),brand=(R.up?bw.toUpperCase():bw);
