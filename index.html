@@ -1766,7 +1766,7 @@ async function vToData(u,ms){
 /* Webfonts as data: URLs, only the families the page uses and only Latin/Cyrillic subsets. SVG images can't load anything themselves. */
 async function vFontCss(doc){
   const link=doc.getElementById("fontsTool");if(!link)return"";
-  let css="";try{const r=await fetch(link.href);if(r.ok)css=await r.text()}catch(e){}
+  let css="";try{const c=new AbortController(),tm=setTimeout(()=>c.abort(),8000);const r=await fetch(link.href,{signal:c.signal});clearTimeout(tm);if(r.ok)css=await r.text()}catch(e){}
   if(!css)return"";
   const used=new Set();
   doc.querySelectorAll("body,body *").forEach((el,i)=>{if(i>1500)return;getComputedStyle(el).fontFamily.split(",").forEach(f=>used.add(f.trim().replace(/^["']|["']$/g,"").toLowerCase()))});
@@ -1835,14 +1835,16 @@ async function vRender(l,onStage){
   const d=draftData(l);
   const fr=document.createElement("iframe");
   fr.setAttribute("aria-hidden","true");fr.tabIndex=-1;
-  fr.style.cssText="position:fixed;left:-10000px;top:0;width:390px;height:844px;border:0;pointer-events:none;visibility:visible";
+  /* kept inside the viewport but invisible: far off-screen frames get throttled by Chrome */
+  fr.style.cssText="position:fixed;left:0;top:0;width:390px;height:844px;border:0;pointer-events:none;opacity:0;z-index:-1";
   fr.src=location.pathname+"#s/"+await packData(d);
   document.body.appendChild(fr);
   try{
-    await new Promise((res,rej)=>{fr.onload=res;setTimeout(()=>rej(new Error("черновик не загрузился")),20000)});
-    const w=fr.contentWindow;
-    for(let i=0;i<60&&!w.document.querySelector(".logo");i++)await vSleep(150);
-    try{await w.document.fonts.ready}catch(e){}
+    /* don't wait for the load event: one slow photo can hold it for a minute. Wait for the page itself. */
+    let w=null;
+    for(let i=0;i<200;i++){await vSleep(150);try{w=fr.contentWindow;if(w&&w.document&&w.document.querySelector(".logo"))break}catch(e){}w=null}
+    if(!w)throw new Error("черновик не загрузился за 30 секунд, проверьте интернет и попробуйте ещё раз");
+    await Promise.race([w.document.fonts.ready.catch(()=>{}),vSleep(5000)]);
     await Promise.all([...w.document.images].slice(0,14).map(im=>im.complete?0:new Promise(r=>{im.onload=im.onerror=r;setTimeout(r,6000)})));
     await vSleep(1700);
     if(my!==vidRun)return null;
