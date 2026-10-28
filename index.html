@@ -1354,14 +1354,14 @@ function buildQuery(scope){
   L.push(');','out center tags 4000;');return L.join("\n");
 }
 /* Ask several public map servers, staggered; first good answer wins, the rest are cancelled. */
-function overpass(q,onTry){
+function overpass(q,onTry,maxMs=95000){
   const errs=[];const ctls=[];let done=false;
   return new Promise((resolve,reject)=>{
     let pending=OVERPASS.length;
     OVERPASS.forEach(([name,url],i)=>{
       setTimeout(async()=>{
         if(done)return;
-        const ctl=new AbortController();ctls.push(ctl);const to=setTimeout(()=>ctl.abort(),95000);
+        const ctl=new AbortController();ctls.push(ctl);const to=setTimeout(()=>ctl.abort(),maxMs);
         onTry&&onTry(name);
         try{
           const r=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"},signal:ctl.signal});
@@ -1509,11 +1509,12 @@ $("#sform").addEventListener("submit",async e=>{
     prog(head+esc(note));
     renderAll(true);
     setTimeout(async()=>{
-      prog(head+'<span class="spin"></span>Сверяю с OpenStreetMap…');
-      const o=prof.k2?await osmCrossCheck(list):0;
-      const h2=head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':'');
+      /* OSM cross-check runs in the background with a short timeout: it must never hold up the rest. */
       const lab=cityLabel;
       if(ghOn())startDomainJob(list,lab);
+      const osmP=prof.k2?osmCrossCheck(list).then(o=>{if(o)toast('OpenStreetMap: нашлись сайты ещё у '+o+' — убрал их из списка');return o}).catch(()=>0):Promise.resolve(0);
+      const o=await Promise.race([osmP,new Promise(r=>setTimeout(()=>r(0),1500))]);
+      const h2=head+(o?'В OpenStreetMap нашлись сайты у '+o+'. ':'');
       if(vkTok)await runVkCheck(true,h2);
       if(!ghOn()&&ON_NETLIFY)checkAll(true,h2);
       if(!vkTok)prog(h2+esc(note)+(ghOn()?' Домены проверяются на GitHub. Войдите через ВК в профиле, чтобы проверять ещё и группы ВК.':' Войдите через ВК в профиле, и парсер будет сам проверять их группы.'));
@@ -1732,7 +1733,7 @@ async function osmCrossCheck(list){
   const pts=list.filter(l=>l.lat!=null);if(!pts.length)return 0;
   const la=pts.map(l=>l.lat),lo=pts.map(l=>l.lon);
   const bb=[Math.min(...la)-.01,Math.min(...lo)-.015,Math.max(...la)+.01,Math.max(...lo)+.015].map(x=>x.toFixed(4)).join(",");
-  let json;try{json=await overpass('[out:json][timeout:60];(nwr["name"]["website"]('+bb+');nwr["name"]["contact:website"]('+bb+'););out tags center 5000;')}catch(e){return 0}
+  let json;try{json=await overpass('[out:json][timeout:25];(nwr["name"]["website"]('+bb+');nwr["name"]["contact:website"]('+bb+'););out tags center 5000;',null,25000)}catch(e){return 0}
   const idx={};for(const e of json.elements||[]){const t=e.tags||{};const k=nameKey(t.name||"");if(k.length<3)continue;const c=e.center||e;(idx[k]||(idx[k]=[])).push({url:t.website||t["contact:website"],lat:c.lat,lon:c.lon})}
   let n=0;
   for(const l of list){
