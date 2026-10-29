@@ -344,7 +344,7 @@ function telHref(p){const d=String(p||"").split(/[;,]/)[0].replace(/[^\d+]/g,"")
 /* Photos go through our own domain (Netlify Image CDN), so they load even where the photo stock site is blocked or slow. */
 const DIRECT=id=>w=>"https://images.unsplash.com/photo-"+id+"?auto=format&fit=crop&w="+w+"&q=72";
 const ON_NETLIFY=/netlify\.app$/.test(location.hostname);
-const HIT_API=(ON_NETLIFY?"":"https://bezsaita.netlify.app")+"/api/hit";
+const HIT_API="https://bezsaita-hits.netlify.app/api/hit";   /* the open counter lives in its own small Netlify project */
 const DATA_REPO="fopnol/bezsaita-data",SITE_REPO="fopnol/bezsaita",SITE_BASE="https://fopnol.github.io/bezsaita/";
 /* Short draft links (?d=slug): the data lives in the "drafts" branch of the public site repo. */
 async function loadDraft(slug){
