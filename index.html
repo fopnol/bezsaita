@@ -162,6 +162,7 @@ dialog::backdrop{background:rgba(10,14,12,.45)}
 .field.full{grid-column:1/-1}
 .dlgfoot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 dialog.wide{width:min(720px,calc(100vw - 32px))}
+.qconfirm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--accent,#ff5a1f) 14%,transparent);border:1px solid color-mix(in srgb,var(--accent,#ff5a1f) 45%,transparent)}
 .vidbox{display:grid;place-items:center;background:#0d0f0e;border-radius:10px;min-height:120px;overflow:hidden}.vidbox:empty{display:none}.vidcv{display:block;width:auto;max-width:100%;height:min(56vh,560px);aspect-ratio:9/16}
 .field.sep{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
 body.tool [hidden]{display:none!important}
@@ -2520,7 +2521,7 @@ function queueFromLead(l,text){
 function markQueued(id){if(["new","site"].includes(stOf(id))){setStatus(id,"sent",true);if(id===selId&&mode==="search")renderDetail()}}
 function setTaskSt(id,st){
   const t=queue[id];if(!t)return;
-  t.st=st;t.stBy=myName();t.at=Date.now();store.set("queue",queue);
+  t.st=st;t.stBy=myName();t.at=Date.now();if(st!=="new")t.stAt=Date.now();store.set("queue",queue);
   if(t.lead){if(st==="new"){if(statuses[t.lead]&&statuses[t.lead]!=="site"){delete statuses[t.lead];delete who[t.lead]}}else{statuses[t.lead]=st;who[t.lead]={n:myName(),s:st,at:Date.now()}}store.set("statuses",statuses);store.set("who",who);renderStats();renderList()}
   renderQBadge();renderQueue();
   if(qOpenId===id&&$("#qDlg").open){if(st!=="new"){toast("«"+(t.name||"")+"»: "+Q_ST[st]);qNext(id)}else renderQDlg()}
@@ -2550,17 +2551,24 @@ function qCard(t){
     (vk?'<a class="verify qlink" href="'+esc(vk)+'" target="_blank" rel="noopener">'+esc(vk.replace(/^https:\/\//,""))+'</a>':'<span class="verify bad">Нет ссылки на ВК</span>')+
     (t.text?'<small class="verify">Текст правили вручную. <a href="#" data-act="auto">Вернуть автоматический</a></small>':'<small class="verify">Текст составлен сам от имени «'+esc(myName())+'», со ссылкой на черновик сайта.</small>')+
     '<textarea class="qtext" aria-label="Текст сообщения">'+esc(t.text||qAuto[t.id]||"Составляю текст…")+'</textarea>'+
-    '<div class="lrow qbtns">'+(vk?'<a class="btn primary" data-act="chat" href="'+esc(chat)+'" target="_blank" rel="noopener">'+ico("vk")+'Открыть чат ВК</a>':'')+'<button class="btn" data-act="copy" type="button">'+ico("copy")+'Скопировать текст</button><button class="btn" data-act="video" type="button" title="13-секундный ролик с их черновиком: прикрепите к сообщению">Ролик</button></div>'+
+    '<div class="lrow qbtns">'+(vk?'<a class="btn primary" data-act="chat" href="'+esc(chat)+'" target="_blank" rel="noopener" title="Текст скопируется, откроется чат с группой">'+ico("vk")+'Отправить в ВК</a>':'')+'<button class="btn" data-act="copy" type="button">'+ico("copy")+'Скопировать текст</button><button class="btn" data-act="video" type="button" title="13-секундный ролик с их черновиком: прикрепите к сообщению">Ролик</button></div>'+
     '<div class="lrow qbtns"><span class="verify">Статус:</span><span class="qst">'+["sent","replied","client","no"].map(k=>'<button class="btn sm" type="button" data-st2="'+k+'" aria-pressed="'+(t.st===k)+'">'+Q_ST[k]+'</button>').join("")+(t.st!=="new"?'<button class="btn sm" type="button" data-st2="new">Вернуть в очередь</button>':'')+'</span>'+
     '<button class="btn sm ghost qdel" data-act="del" type="button">Удалить</button></div></div>';
 }
-let qOpenId=null;
+let qOpenId=null,qSendPending=null;const Q_DAY=25;
+/* sent today by me: counted by the time the status changed */
+function qToday(){const d0=new Date();d0.setHours(0,0,0,0);return Object.values(queue).filter(t=>t.st!=="new"&&t.stBy===myName()&&(t.stAt||0)>=+d0).length}
+/* back from the VK tab: ask whether the message went out */
+function qBack(){if(document.visibilityState!=="visible"||!qSendPending)return;const p=qSendPending;if(Date.now()-p.at<1500)return;const t=queue[p.id];if(!t||t.st!=="new"){qSendPending=null;return}if(mode!=="queue")setMode("queue");openQ(p.id);setTimeout(()=>{const b=document.querySelector('#qDlg [data-act="sentyes"]');if(b)b.focus()},50)}
+document.addEventListener("visibilitychange",qBack);window.addEventListener("focus",qBack);
 const qNewIds=()=>Object.entries(queue).filter(([id,t])=>t.st==="new").sort((a,b)=>a[1].at-b[1].at).map(x=>x[0]);
 function renderQDlg(){
   const dlg=$("#qDlg"),t=qOpenId&&queue[qOpenId];
   if(!t){if(dlg.open)dlg.close();qOpenId=null;return}
   const ids=qNewIds(),pos=ids.indexOf(qOpenId);
-  $("#qDlgBody").innerHTML='<div class="qdtop"><span class="verify">'+(pos>=0?'Ждёт отправки: '+(pos+1)+' из '+ids.length:Q_ST[t.st])+'</span><span class="lrow" style="gap:6px">'+(ids.length>1||(pos<0&&ids.length)?'<button class="btn sm" type="button" data-act="next">Следующий →</button>':'')+'<button class="btn sm" type="button" data-act="close" aria-label="Закрыть">✕</button></span></div>'+qCard(Object.assign({id:qOpenId},t));
+  const nT=qToday(),ask=qSendPending&&qSendPending.id===qOpenId&&t.st==="new";
+  $("#qDlgBody").innerHTML=(ask?'<div class="qconfirm" role="alert"><b>Отправили сообщение «'+qTitle(t)+'»?</b><span class="lrow" style="gap:8px"><button class="btn primary" type="button" data-act="sentyes">Да, отправил → следующий</button><button class="btn" type="button" data-act="sentno">Нет</button></span></div>':'')+
+   '<div class="qdtop"><span class="verify">'+(pos>=0?'Ждёт отправки: '+(pos+1)+' из '+ids.length:Q_ST[t.st])+' · сегодня отправлено: '+nT+(nT>=Q_DAY?' <b class="bad">— на сегодня хватит, иначе ВК может ограничить аккаунт</b>':'')+'</span><span class="lrow" style="gap:6px">'+(ids.length>1||(pos<0&&ids.length)?'<button class="btn sm" type="button" data-act="next">Следующий →</button>':'')+'<button class="btn sm" type="button" data-act="close" aria-label="Закрыть">✕</button></span></div>'+qCard(Object.assign({id:qOpenId},t));
 }
 function openQ(id){qOpenId=id;renderQDlg();const d=$("#qDlg");if(!d.open)d.showModal()}
 function qNext(after){const ids=qNewIds().filter(x=>x!==after);if(!ids.length){qOpenId=null;renderQDlg();toast("Очередь пуста: всё отправлено");return}const i=qNewIds().indexOf(after);const nx=ids.find(x=>qNewIds().indexOf(x)>i)||ids[0];openQ(nx)}
@@ -2589,11 +2597,14 @@ function qClick(e){
   const ac=e.target.closest("[data-act]");
   if(ac&&ac.dataset.act==="close"){$("#qDlg").close();return}
   if(ac&&ac.dataset.act==="next"){qNext(qOpenId);return}
+  if(ac&&ac.dataset.act==="sentyes"){const p=qSendPending;qSendPending=null;if(p&&queue[p.id])setTaskSt(p.id,"sent");return}
+  if(ac&&ac.dataset.act==="sentno"){qSendPending=null;renderQDlg();return}
   const it=e.target.closest(".qitem");if(!it)return;const id=it.dataset.q,t=queue[id];if(!t)return;
   const s2=e.target.closest("[data-st2]");if(s2){setTaskSt(id,s2.dataset.st2);return}
   const a=e.target.closest("[data-act]");if(!a)return;
   const txt=it.querySelector(".qtext").value;
-  if(a.dataset.act==="chat"){copy(txt,"Текст скопирован: вставьте его в чат (Ctrl+V), отправьте и нажмите «Отправил»")}
+  if(a.dataset.act==="chat"){qSendPending={id,at:Date.now()};copy(txt,"Текст скопирован: в чате нажмите Ctrl+V и Enter, потом вернитесь сюда")}
+
   else if(a.dataset.act==="copy"){copy(txt,"Текст скопирован")}
   else if(a.dataset.act==="video"){makeVideo(qLead(id,t))}
   else if(a.dataset.act==="auto"){e.preventDefault();t.text="";t.at=Date.now();store.set("queue",queue);renderQueue();if($("#qDlg").open)renderQDlg()}
