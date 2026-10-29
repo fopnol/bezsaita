@@ -190,6 +190,14 @@ body.tool [hidden]{display:none!important}
 .qrows{display:grid;gap:8px}
 .qrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;text-align:left;cursor:pointer;width:100%;font:inherit;color:inherit}
 .qrow:hover{border-color:var(--ink)}.qrn{display:grid;gap:2px;min-width:0}.qrn b{font-size:16px}
+.qopen{font-size:13px;color:var(--muted);display:block}.qopen.yes{color:var(--warm);font-weight:600}.qopen.yes .verify{font-weight:400}
+.qopen.yes::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px}
+.qtiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.qtile{padding:12px 14px;display:grid;gap:2px}.qtile b{font-size:26px;font-family:var(--f-display);font-weight:600;line-height:1.15}
+.qinsight{padding:12px 16px;font-size:15px}.qstat{padding:14px 16px 8px}.qtwrap{overflow-x:auto}
+.qtab{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.qtab th,.qtab td{text-align:left;padding:7px 10px 7px 0;border-top:1px solid var(--line);white-space:nowrap;font-weight:400}
+.qtab thead th{border-top:0;font-size:12px;color:var(--muted)}.qtab tbody th{font-weight:600;white-space:normal;min-width:120px}.qtab tr.few>*{opacity:.55}
+.qbarh,.qbarc{width:28%}.qbar{display:block;height:8px;border-radius:4px;background:var(--sunk);min-width:80px}.qbar i{display:block;height:100%;border-radius:4px;background:var(--warm)}
+@media (max-width:700px){.qtiles{grid-template-columns:repeat(2,minmax(0,1fr))}.qbarh,.qbarc,.qno{display:none}}
 #qDlg .qitem{display:grid;gap:10px}.qdtop{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;z-index:1000;box-shadow:0 10px 30px -10px rgba(0,0,0,.4)}
 
@@ -336,6 +344,7 @@ function telHref(p){const d=String(p||"").split(/[;,]/)[0].replace(/[^\d+]/g,"")
 /* Photos go through our own domain (Netlify Image CDN), so they load even where the photo stock site is blocked or slow. */
 const DIRECT=id=>w=>"https://images.unsplash.com/photo-"+id+"?auto=format&fit=crop&w="+w+"&q=72";
 const ON_NETLIFY=/netlify\.app$/.test(location.hostname);
+const HIT_API=(ON_NETLIFY?"":"https://bezsaita.netlify.app")+"/api/hit";
 const DATA_REPO="fopnol/bezsaita-data",SITE_REPO="fopnol/bezsaita",SITE_BASE="https://fopnol.github.io/bezsaita/";
 /* Short draft links (?d=slug): the data lives in the "drafts" branch of the public site repo. */
 async function loadDraft(slug){
@@ -994,6 +1003,15 @@ body.site{margin:0;background:var(--bg);color:var(--ink);font-family:"Onest","Ma
 @media(prefers-reduced-motion:reduce){.aur i,.flap .fl.flip{animation:none}}
 @media(prefers-reduced-motion:reduce){.anim .rv,.anim .split .wd>span,.anim .clip,.anim .clip img{transition:none!important;opacity:1!important;transform:none!important;clip-path:none!important}.mq>div,.hC>.ph img,.live i::after,.ring svg{animation:none}.loader{display:none}}
 `;
+/* A draft opened from a message: tell the tool "they looked". Our own browsers (the tool has stored something here) don't count,
+   nor reloads in the same tab. Only the moment is recorded, nothing about the visitor. */
+function draftOpened(slug){try{
+  if(window.top!==window||navigator.webdriver)return;
+  for(let i=0;i<localStorage.length;i++)if(String(localStorage.key(i)).startsWith("bz:"))return;
+  const k="bz:o:"+slug;if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1");
+  const u=HIT_API+"?s="+encodeURIComponent(slug);
+  if(!(navigator.sendBeacon&&navigator.sendBeacon(u)))fetch(u,{method:"POST",mode:"no-cors",keepalive:true}).catch(()=>{});
+}catch(e){}}
 async function bootSite(dIn,slug){
   document.documentElement.classList.add("site-h");
   document.body.className="site";
@@ -1001,6 +1019,7 @@ async function bootSite(dIn,slug){
   const st=document.createElement("style");st.textContent=SITE_CSS;document.head.appendChild(st);
   let d=dIn||null;
   if(!d&&slug){d=await loadDraft(slug);if(!d){document.body.innerHTML='<p style="padding:40px;font-family:system-ui">Черновик не нашёлся. Если ссылку прислали только что, откройте её ещё раз через минуту.</p>';return}}
+  if(slug)draftOpened(slug);
   if(!d){try{d=await unpackData(location.hash.slice(3))}catch(e){document.body.innerHTML='<p style="padding:40px;font-family:system-ui">Ссылка повреждена. Попросите отправить её ещё раз.</p>';return}}
   const REAL=!!d.real;
   const kk=kkOf(d.t||"",d.c||"other",d.n);let K=KK[kk]||KK.other;
@@ -2372,7 +2391,7 @@ async function ghCheck(){
 /* ---------- short draft links: ?d=<slug>, data kept in the drafts branch of the site repo ---------- */
 let drafts=store.get("drafts",{});   // slug -> {h, sha}
 const dBusy={};let dWarned=false;
-function draftSlug(l){const b=slugify(brandName(l.name).word)||slugify(l.name)||"site";return b.slice(0,28).replace(/-+$/,"")+"-"+(hashStr(l.id+"|"+myName())%1679616).toString(36).padStart(4,"0")}   /* per person: a friend's draft never overwrites mine */
+function draftSlug(l,as){const b=slugify(brandName(l.name).word)||slugify(l.name)||"site";return b.slice(0,28).replace(/-+$/,"")+"-"+(hashStr(l.id+"|"+(as||myName()))%1679616).toString(36).padStart(4,"0")}   /* per person: a friend's draft never overwrites mine */
 const draftReady=(l,d)=>{const c=drafts[draftSlug(l)];return!!(c&&c.h===String(hashStr(JSON.stringify(d))))};
 async function ensureDraft(l,d){
   const slug=draftSlug(l),txt=JSON.stringify(d),h=String(hashStr(txt)),cur=drafts[slug];
@@ -2514,7 +2533,7 @@ let qPending=null;
 function queueFromLead(l,text){
   const vk=vkNormUrl(l.vk||(vkinfo[l.id]&&vkinfo[l.id].url)||"");
   const old=Object.entries(queue).find(([id,t])=>t.lead===l.id&&t.st==="new");
-  if(!vk){qPending={lead:l.id,ld:leadSnap(l),text};setMode("queue");const d=$("#qadd");if(d)d.open=true;$("#qName").value=l.name;$("#qText").value=text;$("#qVk").focus();toast("Вставьте ссылку на их группу ВК и нажмите «Добавить»");return}
+  if(!vk){qPending={lead:l.id,ld:leadSnap(l),text};if(qFilt==="stats")qFilt="new";setMode("queue");const d=$("#qadd");if(d)d.open=true;$("#qName").value=l.name;$("#qText").value=text;$("#qVk").focus();toast("Вставьте ссылку на их группу ВК и нажмите «Добавить»");return}
   if(old){old[1].text=text;old[1].vk=vk;old[1].ld=leadSnap(l);old[1].at=Date.now();store.set("queue",queue);markQueued(l.id);toast("Обновил в очереди: "+l.name);return}
   addTask({vk,text,name:l.name,city:cityLabel,lead:l.id,ld:leadSnap(l)});markQueued(l.id);toast("В очереди на отправку, статус «Написал»: "+l.name+(ghOn()?"":". Подключите общую базу, чтобы её увидел друг"));
 }
@@ -2522,6 +2541,7 @@ function queueFromLead(l,text){
 function markQueued(id){if(["new","site"].includes(stOf(id))){setStatus(id,"sent",true);if(id===selId&&mode==="search")renderDetail()}}
 function setTaskSt(id,st){
   const t=queue[id];if(!t)return;
+  if(st!=="new"&&t.st==="new"&&t.slug===undefined)t.slug=slugIn(t.text||qAuto[id]);
   t.st=st;t.stBy=myName();t.at=Date.now();if(st!=="new")t.stAt=Date.now();store.set("queue",queue);
   if(t.lead){if(st==="new"){if(statuses[t.lead]&&statuses[t.lead]!=="site"){delete statuses[t.lead];delete who[t.lead]}}else{statuses[t.lead]=st;who[t.lead]={n:myName(),s:st,at:Date.now()}}store.set("statuses",statuses);store.set("who",who);renderStats();renderList()}
   renderQBadge();renderQueue();
@@ -2545,10 +2565,78 @@ async function qFill(){
 }
 const qMeta=t=>(t.city?esc(t.city)+' · ':'')+'добавил '+esc(t.by||"")+', '+ago(t.at)+(t.st!=="new"&&t.stBy?' · «'+Q_ST[t.st]+'»: '+esc(t.stBy):'');
 const qTitle=t=>esc(t.name||vkScreen(t.vk)||"Без названия");
-function qRow(t){return'<button type="button" class="card qrow" data-open="'+esc(t.id)+'"><span class="qrn"><b>'+qTitle(t)+'</b><span class="verify">'+qMeta(t)+'</span></span><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></button>'}
+/* ---------- who opened the draft: the draft page reports each open to /api/hit (only the time, nothing about the visitor) ---------- */
+const TRACK_FROM=Date.UTC(2026,9,29,15,0);   /* opens are recorded from here on; older messages simply show nothing */
+let hits=store.get("hits",{}),hitsAt=0,hitsBusy=false;
+const slugIn=txt=>{const m=String(txt||"").match(/[?&]d=([a-z0-9-]{3,60})/);return m?m[1]:""};
+function qSlug(id,t){if(t.slug!==undefined)return t.slug;const s=slugIn(t.text||qAuto[id]);if(s)return s;return t.st!=="new"&&t.stBy?draftSlug(qLead(id,t),t.stBy):""}
+function whenAt(ts){const d=new Date(ts),day=x=>{const y=new Date(x);y.setHours(0,0,0,0);return+y},dd=Math.round((day(Date.now())-day(ts))/864e5),hm=d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+  return(dd===0?"сегодня":dd===1?"вчера":d.toLocaleDateString("ru-RU",{day:"numeric",month:"short"}).replace(".",""))+" в "+hm}
+const qHit=t=>{const h=hits[qSlug(t.id,t)];return h&&h.n?h:null};
+const qTracked=t=>!!qSlug(t.id,t)&&(t.stAt||t.at||0)>=TRACK_FROM;
+function qOpenInfo(t,full){
+  if(t.st==="new")return"";const h=qHit(t);
+  if(h)return'<span class="qopen yes">Открыли черновик '+h.n+' '+plural(h.n,["раз","раза","раз"])+', '+(h.n>1?"последний — ":"")+whenAt(h.last)+(full&&h.times.length>1?'<span class="verify"> · все: '+h.times.map(whenAt).join(", ")+(h.n>h.times.length?"…":"")+'</span>':'')+'</span>';
+  return qTracked(t)?'<span class="qopen">Черновик пока не открывали</span>':"";
+}
+async function loadHits(force){
+  if(hitsBusy||(!force&&Date.now()-hitsAt<90000))return;
+  const sl=[...new Set(Object.entries(queue).filter(([id,t])=>t.st!=="new").map(([id,t])=>qSlug(id,Object.assign({id},t))).filter(Boolean))];
+  if(!sl.length)return;hitsBusy=true;
+  try{
+    const out={};
+    for(let i=0;i<sl.length;i+=150){const r=await fetch(HIT_API+"?s="+sl.slice(i,i+150).join(","),{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);Object.assign(out,await r.json())}
+    hitsAt=Date.now();const ch=J(out)!==J(hits);hits=out;store.setQ("hits",hits);
+    if(ch&&mode==="queue"&&!qEditing()){renderQueue(true);if($("#qDlg").open)renderQDlg()}
+  }catch(e){hitsAt=Date.now()-60000}finally{hitsBusy=false}
+}
+setInterval(()=>{if(mode==="queue"&&document.visibilityState==="visible")loadHits()},30000);
+const qSilent=t=>t.st==="sent"&&!!qHit(t);   /* looked at the draft, didn't answer: worth a second message */
+
+/* ---------- statistics: what pays off, by niche and city ---------- */
+const KK_RU={barber:"Барбершопы",salon:"Салоны красоты",nails:"Маникюрные студии",massage:"Массажные салоны",cafe:"Кафе и кофейни",bakery:"Пекарни",restaurant:"Рестораны",
+  car:"Автосервисы",tyres:"Шиномонтажи",wash:"Автомойки",dentist:"Стоматологии",clinic:"Клиники",vet:"Ветклиники",optic:"Оптики",tailor:"Ателье",keys:"Мастерские ключей",
+  cobbler:"Обувные мастерские",phone:"Ремонт телефонов",workshop:"Мастерские",florist:"Цветочные",pet:"Зоомагазины",store:"Магазины",other:"Другое"};
+const Q_RANK={sent:1,no:2,replied:3,client:4};
+function qEff(t){let s=t.st;const ls=t.lead&&statuses[t.lead];if(ls&&Q_RANK[ls]&&Q_RANK[ls]>(Q_RANK[s]||0))s=ls;return s}   /* a reply marked in the business card counts too */
+function qStatRows(){
+  const by={};
+  for(const [id,t0] of Object.entries(queue)){if(t0.st==="new")continue;const t=Object.assign({id},t0),k=t.lead||id,s=qEff(t);if(!Q_RANK[s])continue;if(!by[k]||Q_RANK[s]>Q_RANK[by[k].s])by[k]={t,s}}
+  return Object.values(by).map(({t,s})=>{const x=t.ld||{};return{s,all:"all",city:t.city||"Без города",niche:KK_RU[kkOf(x.tag||"",x.niche||"other",x.name||t.name||"")]||"Другое",op:!!qHit(t),tr:!!qHit(t)||qTracked(t)}});
+}
+function qAgg(rows,key){const m={};for(const r of rows){const g=m[r[key]]||(m[r[key]]={k:r[key],n:0,rep:0,cl:0,no:0,op:0,tr:0});g.n++;if(r.s!=="sent")g.rep++;if(r.s==="client")g.cl++;if(r.s==="no")g.no++;if(r.tr){g.tr++;if(r.op)g.op++}}
+  return Object.values(m).sort((a,b)=>b.n-a.n||a.k.localeCompare(b.k,"ru"))}
+const pct=(a,b)=>b?Math.round(a*100/b)+"%":"—";
+const Q_MIN=10;   /* fewer messages than this in a group and the percentages are noise */
+function qInsight(g){
+  const ok=g.filter(x=>x.n>=Q_MIN);if(ok.length<2)return'Выводы появятся, когда хотя бы в двух нишах наберётся по '+Q_MIN+' отправленных.';
+  const r=x=>x.rep/x.n;ok.sort((a,b)=>r(b)-r(a));const hi=ok[0],lo=ok[ok.length-1];
+  if(r(hi)===0)return'Пока никто не ответил: смотрите, кто открывает черновик, и пишите им ещё раз.';
+  const lc=s=>s.charAt(0).toLowerCase()+s.slice(1);
+  if(r(lo)===0)return'<b>'+esc(hi.k)+'</b> ответили в '+pct(hi.rep,hi.n)+' случаев, а '+esc(lc(lo.k))+' — ни разу из '+lo.n+'.';
+  const k=r(hi)/r(lo);if(k<1.5)return'Ниши отвечают примерно одинаково: '+pct(lo.rep,lo.n)+'–'+pct(hi.rep,hi.n)+'.';
+  return'<b>'+esc(hi.k)+'</b> отвечают в '+(k>=3?Math.round(k):String(Math.round(k*10)/10).replace(".",","))+' '+plural(Math.round(k),["раз","раза","раз"])+' чаще, чем '+esc(lc(lo.k))+' ('+pct(hi.rep,hi.n)+' против '+pct(lo.rep,lo.n)+').';
+}
+function qTable(title,g,col){
+  const few=x=>x.n<Q_MIN?' few':'';
+  return'<div class="card qstat"><h3 class="blockh">'+title+'</h3><div class="qtwrap"><table class="qtab"><thead><tr><th>'+col+'</th><th>Отправлено</th><th>Открыли</th><th>Ответили</th><th>Клиенты</th><th class="qbarh">Доля ответов</th></tr></thead><tbody>'+
+    g.map(x=>'<tr class="'+few(x)+'"><th scope="row">'+esc(x.k)+'</th><td>'+x.n+'</td><td>'+(x.tr?x.op+' <span class="verify">'+pct(x.op,x.tr)+'</span>':'<span class="verify">—</span>')+'</td><td>'+x.rep+' <span class="verify">'+pct(x.rep,x.n)+'</span>'+(x.no?'<span class="verify qno"> · отказ '+x.no+'</span>':'')+'</td><td>'+x.cl+(x.cl?' <span class="verify">'+pct(x.cl,x.n)+'</span>':'')+'</td><td class="qbarc"><span class="qbar" title="'+pct(x.rep,x.n)+' ответили"><i style="width:'+(x.n?Math.round(x.rep*100/x.n):0)+'%"></i></span></td></tr>').join("")+
+    '</tbody></table></div></div>';
+}
+function qStatsHtml(){
+  const rows=qStatRows();if(!rows.length)return'<div class="card qempty">Статистика появится, когда отправите первые сообщения.</div>';
+  const T=qAgg(rows,"all")[0]||{n:0,rep:0,cl:0,op:0,tr:0},byN=qAgg(rows,"niche"),byC=qAgg(rows,"city");
+  const tile=(lab,v,sub)=>'<div class="card qtile"><span class="verify">'+lab+'</span><b>'+v+'</b><span class="verify">'+sub+'</span></div>';
+  return'<div class="qtiles">'+tile("Отправлено",T.n,"бизнесов")+tile("Открыли черновик",T.tr?T.op:"—",T.tr?pct(T.op,T.tr)+" из "+T.tr+", что считаем":"считаем с 29 октября")+tile("Ответили",T.rep,pct(T.rep,T.n)+" от отправленных")+tile("Клиенты",T.cl,pct(T.cl,T.n)+" от отправленных")+'</div>'+
+    '<div class="card qinsight">'+qInsight(byN)+'</div>'+
+    qTable("По нишам",byN,"Ниша")+qTable("По городам",byC,"Город")+
+    '<p class="verify" style="margin:0">«Ответили» — все, кто написал в ответ, включая отказы. Статусы берутся из «Отправки» и из карточки бизнеса. Строки бледнее, где отправлено меньше '+Q_MIN+': там проценты пока случайны. «Открыли» считается только для сообщений с 29 октября.</p>';
+}
+
+function qRow(t){return'<button type="button" class="card qrow" data-open="'+esc(t.id)+'"><span class="qrn"><b>'+qTitle(t)+'</b><span class="verify">'+qMeta(t)+'</span>'+qOpenInfo(t)+'</span><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></button>'}
 function qCard(t){
   const vk=t.vk||"",chat=vkChat(vk);
-  return'<div class="qitem" data-q="'+esc(t.id)+'"><div class="qhead"><div style="min-width:0"><b class="qname">'+qTitle(t)+'</b><div class="verify">'+qMeta(t)+'</div></div><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></div>'+
+  return'<div class="qitem" data-q="'+esc(t.id)+'"><div class="qhead"><div style="min-width:0"><b class="qname">'+qTitle(t)+'</b><div class="verify">'+qMeta(t)+'</div>'+qOpenInfo(t,true)+'</div><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></div>'+
     (vk?'<a class="verify qlink" href="'+esc(vk)+'" target="_blank" rel="noopener">'+esc(vk.replace(/^https:\/\//,""))+'</a>':'<span class="verify bad">Нет ссылки на ВК</span>')+
     (t.text?'<small class="verify">Текст правили вручную. <a href="#" data-act="auto">Вернуть автоматический</a></small>':'<small class="verify">Текст составлен сам от имени «'+esc(myName())+'», со ссылкой на черновик сайта.</small>')+
     (t.st==="new"&&qOpenId===t.id?'<div class="qvid" data-v="'+esc(t.id)+'"></div>':'')+
@@ -2602,14 +2690,15 @@ function renderQDlg(){
 function openQ(id){qOpenId=id;renderQDlg();const d=$("#qDlg");if(!d.open)d.showModal()}
 function qNext(after){const ids=qNewIds().filter(x=>x!==after);if(!ids.length){qOpenId=null;renderQDlg();toast("Очередь пуста: всё отправлено");return}const i=qNewIds().indexOf(after);const nx=ids.find(x=>qNewIds().indexOf(x)>i)||ids[0];openQ(nx)}
 function renderQueue(noFill){
-  const box=$("#qview");if(!box)return;if(!noFill)qFill();
+  const box=$("#qview");if(!box)return;if(!noFill){qFill();loadHits()}
   const all=Object.entries(queue).map(([id,t])=>Object.assign({id},t));
   const nNew=all.filter(t=>t.st==="new").length,nDone=all.length-nNew;
-  const list=all.filter(t=>qFilt==="all"||(qFilt==="new"?t.st==="new":t.st!=="new")).sort((a,b)=>qFilt==="new"?a.at-b.at:b.at-a.at);
-  box.innerHTML='<div class="qtop"><h2>Отправка</h2><div class="mseg" role="group" aria-label="Фильтр"><button data-qf="new" aria-pressed="'+(qFilt==="new")+'">Ждут отправки · '+nNew+'</button><button data-qf="done" aria-pressed="'+(qFilt==="done")+'">Отправленные · '+nDone+'</button><button data-qf="all" aria-pressed="'+(qFilt==="all")+'">Все</button></div></div>'+
-   '<p class="verify" style="margin:0">Сюда попадают сообщения для отправки: ссылка на группу ВК и готовый текст. «Открыть чат ВК» копирует текст и открывает переписку с группой: вставьте текст (Ctrl+V), отправьте и нажмите «Отправил».'+(ghOn()?'':' <b>Сейчас очередь видна только в этом браузере.</b> <a href="#" id="qGh">Подключите общую базу</a>, чтобы её видел друг.')+'</p>'+
-   '<details class="card qadd" id="qadd"><summary>Добавить вручную</summary><div class="fgrid" style="margin-top:12px"><div class="field full"><label for="qVk">Ссылка на группу ВК</label><input type="text" id="qVk" placeholder="https://vk.com/…"></div><div class="field full"><label for="qName">Название бизнеса (необязательно)</label><input type="text" id="qName"></div><div class="field full"><label for="qText">Текст для клиента</label><textarea id="qText" rows="6" placeholder="Можно оставить пустым: текст составится сам от имени того, кто отправляет, со ссылкой на черновик сайта"></textarea></div></div><div class="lrow" style="margin-top:10px"><button class="btn primary" id="qAddBtn" type="button">Добавить</button></div></details>'+
-   (list.length?'<div class="qrows">'+list.map(qRow).join("")+'</div>':'<div class="card qempty">'+(qFilt==="new"?'Всё отправлено. Новые сообщения появятся здесь, когда их добавят из карточки бизнеса кнопкой «В очередь на отправку».':'Здесь пока пусто.')+'</div>');
+  const nSil=all.filter(qSilent).length;if(qFilt==="silent"&&!nSil)qFilt="done";
+  const list=qFilt==="stats"?[]:all.filter(t=>qFilt==="all"||(qFilt==="new"?t.st==="new":qFilt==="silent"?qSilent(t):t.st!=="new")).sort((a,b)=>qFilt==="new"?a.at-b.at:qFilt==="silent"?qHit(b).last-qHit(a).last:b.at-a.at);
+  box.innerHTML='<div class="qtop"><h2>Отправка</h2><div class="mseg" role="group" aria-label="Фильтр"><button data-qf="new" aria-pressed="'+(qFilt==="new")+'">Ждут отправки · '+nNew+'</button><button data-qf="done" aria-pressed="'+(qFilt==="done")+'">Отправленные · '+nDone+'</button><button data-qf="all" aria-pressed="'+(qFilt==="all")+'">Все</button>'+(nSil?'<button data-qf="silent" aria-pressed="'+(qFilt==="silent")+'">Открыли, но молчат · '+nSil+'</button>':'')+'<button data-qf="stats" aria-pressed="'+(qFilt==="stats")+'">Статистика</button></div></div>'+
+   (qFilt==="stats"?'':'<p class="verify" style="margin:0">Сюда попадают сообщения для отправки: ссылка на группу ВК и готовый текст. «Отправить в ВК» копирует текст и открывает переписку с группой: вставьте текст (Ctrl+V), отправьте и вернитесь сюда.'+(ghOn()?'':' <b>Сейчас очередь видна только в этом браузере.</b> <a href="#" id="qGh">Подключите общую базу</a>, чтобы её видел друг.')+'</p>'+
+   '<details class="card qadd" id="qadd"><summary>Добавить вручную</summary><div class="fgrid" style="margin-top:12px"><div class="field full"><label for="qVk">Ссылка на группу ВК</label><input type="text" id="qVk" placeholder="https://vk.com/…"></div><div class="field full"><label for="qName">Название бизнеса (необязательно)</label><input type="text" id="qName"></div><div class="field full"><label for="qText">Текст для клиента</label><textarea id="qText" rows="6" placeholder="Можно оставить пустым: текст составится сам от имени того, кто отправляет, со ссылкой на черновик сайта"></textarea></div></div><div class="lrow" style="margin-top:10px"><button class="btn primary" id="qAddBtn" type="button">Добавить</button></div></details>')+
+   (qFilt==="stats"?qStatsHtml():qFilt==="silent"?'<p class="verify" style="margin:0">Они открыли черновик, но не ответили. Самые свежие сверху: им стоит написать ещё раз, коротко и по делу.</p>':'')+(qFilt==="stats"?'':list.length?'<div class="qrows">'+list.map(qRow).join("")+'</div>':'<div class="card qempty">'+(qFilt==="new"?'Всё отправлено. Новые сообщения появятся здесь, когда их добавят из карточки бизнеса кнопкой «В очередь на отправку».':'Здесь пока пусто.')+'</div>');
   const g=$("#qGh");if(g)g.onclick=e=>{e.preventDefault();openProfile();setTimeout(()=>$("#pG").focus(),50)};
 }
 function qClick(e){
@@ -2632,7 +2721,7 @@ function qClick(e){
   const s2=e.target.closest("[data-st2]");if(s2){setTaskSt(id,s2.dataset.st2);return}
   const a=e.target.closest("[data-act]");if(!a)return;
   const txt=it.querySelector(".qtext").value;
-  if(a.dataset.act==="chat"){qSendPending={id,at:Date.now()};const vd=qVidDownload(id);copy(txt,vd?"Текст скопирован, ролик скачан. В чате: Ctrl+V, перетащите ролик из загрузок в чат (или скрепка → Видео), Enter":(qVid[id]&&qVid[id].st==="busy"?"Текст скопирован. Ролик ещё собирается: можно отправить текст, а ролик следом":"Текст скопирован: в чате нажмите Ctrl+V и Enter, потом вернитесь сюда"))}
+  if(a.dataset.act==="chat"){qSendPending={id,at:Date.now()};t.slug=slugIn(txt);const vd=qVidDownload(id);copy(txt,vd?"Текст скопирован, ролик скачан. В чате: Ctrl+V, перетащите ролик из загрузок в чат (или скрепка → Видео), Enter":(qVid[id]&&qVid[id].st==="busy"?"Текст скопирован. Ролик ещё собирается: можно отправить текст, а ролик следом":"Текст скопирован: в чате нажмите Ctrl+V и Enter, потом вернитесь сюда"))}
 
   else if(a.dataset.act==="copy"){copy(txt,"Текст скопирован")}
   else if(a.dataset.act==="video"){makeVideo(qLead(id,t))}
