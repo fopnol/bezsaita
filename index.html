@@ -2567,13 +2567,13 @@ const qMeta=t=>(t.city?esc(t.city)+' · ':'')+'добавил '+esc(t.by||"")+',
 const qTitle=t=>esc(t.name||vkScreen(t.vk)||"Без названия");
 /* ---------- who opened the draft: the draft page reports each open to /api/hit (only the time, nothing about the visitor) ---------- */
 const TRACK_FROM=Date.UTC(2026,9,29,15,0);   /* opens are recorded from here on; older messages simply show nothing */
-let hits=store.get("hits",{}),hitsAt=0,hitsBusy=false;
+let hits=store.get("hits",{}),hitsAt=0,hitsBusy=false,hitsLive=store.get("hitsLive",false);   /* hitsLive: the counter answered at least once */
 const slugIn=txt=>{const m=String(txt||"").match(/[?&]d=([a-z0-9-]{3,60})/);return m?m[1]:""};
 function qSlug(id,t){if(t.slug!==undefined)return t.slug;const s=slugIn(t.text||qAuto[id]);if(s)return s;return t.st!=="new"&&t.stBy?draftSlug(qLead(id,t),t.stBy):""}
 function whenAt(ts){const d=new Date(ts),day=x=>{const y=new Date(x);y.setHours(0,0,0,0);return+y},dd=Math.round((day(Date.now())-day(ts))/864e5),hm=d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
   return(dd===0?"сегодня":dd===1?"вчера":d.toLocaleDateString("ru-RU",{day:"numeric",month:"short"}).replace(".",""))+" в "+hm}
 const qHit=t=>{const h=hits[qSlug(t.id,t)];return h&&h.n?h:null};
-const qTracked=t=>!!qSlug(t.id,t)&&(t.stAt||t.at||0)>=TRACK_FROM;
+const qTracked=t=>hitsLive&&!!qSlug(t.id,t)&&(t.stAt||t.at||0)>=TRACK_FROM;
 function qOpenInfo(t,full){
   if(t.st==="new")return"";const h=qHit(t);
   if(h)return'<span class="qopen yes">Открыли черновик '+h.n+' '+plural(h.n,["раз","раза","раз"])+', '+(h.n>1?"последний — ":"")+whenAt(h.last)+(full&&h.times.length>1?'<span class="verify"> · все: '+h.times.map(whenAt).join(", ")+(h.n>h.times.length?"…":"")+'</span>':'')+'</span>';
@@ -2586,7 +2586,7 @@ async function loadHits(force){
   try{
     const out={};
     for(let i=0;i<sl.length;i+=150){const r=await fetch(HIT_API+"?s="+sl.slice(i,i+150).join(","),{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);Object.assign(out,await r.json())}
-    hitsAt=Date.now();const ch=J(out)!==J(hits);hits=out;store.setQ("hits",hits);
+    hitsAt=Date.now();const ch=J(out)!==J(hits)||!hitsLive;hits=out;store.setQ("hits",hits);if(!hitsLive){hitsLive=true;store.setQ("hitsLive",true)}
     if(ch&&mode==="queue"&&!qEditing()){renderQueue(true);if($("#qDlg").open)renderQDlg()}
   }catch(e){hitsAt=Date.now()-60000}finally{hitsBusy=false}
 }
@@ -2627,7 +2627,7 @@ function qStatsHtml(){
   const rows=qStatRows();if(!rows.length)return'<div class="card qempty">Статистика появится, когда отправите первые сообщения.</div>';
   const T=qAgg(rows,"all")[0]||{n:0,rep:0,cl:0,op:0,tr:0},byN=qAgg(rows,"niche"),byC=qAgg(rows,"city");
   const tile=(lab,v,sub)=>'<div class="card qtile"><span class="verify">'+lab+'</span><b>'+v+'</b><span class="verify">'+sub+'</span></div>';
-  return'<div class="qtiles">'+tile("Отправлено",T.n,"бизнесов")+tile("Открыли черновик",T.tr?T.op:"—",T.tr?pct(T.op,T.tr)+" из "+T.tr+", что считаем":"считаем с 29 октября")+tile("Ответили",T.rep,pct(T.rep,T.n)+" от отправленных")+tile("Клиенты",T.cl,pct(T.cl,T.n)+" от отправленных")+'</div>'+
+  return'<div class="qtiles">'+tile("Отправлено",T.n,"бизнесов")+tile("Открыли черновик",T.tr?T.op:"—",T.tr?pct(T.op,T.tr)+" из "+T.tr+", что считаем":hitsLive?"считаем с 29 октября":"счётчик ещё не включён")+tile("Ответили",T.rep,pct(T.rep,T.n)+" от отправленных")+tile("Клиенты",T.cl,pct(T.cl,T.n)+" от отправленных")+'</div>'+
     '<div class="card qinsight">'+qInsight(byN)+'</div>'+
     qTable("По нишам",byN,"Ниша")+qTable("По городам",byC,"Город")+
     '<p class="verify" style="margin:0">«Ответили» — все, кто написал в ответ, включая отказы. Статусы берутся из «Отправки» и из карточки бизнеса. Строки бледнее, где отправлено меньше '+Q_MIN+': там проценты пока случайны. «Открыли» считается только для сообщений с 29 октября.</p>';
