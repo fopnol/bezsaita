@@ -162,6 +162,7 @@ dialog::backdrop{background:rgba(10,14,12,.45)}
 .field.full{grid-column:1/-1}
 .dlgfoot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 dialog.wide{width:min(720px,calc(100vw - 32px))}
+.qvid{display:flex;gap:12px;align-items:center}.qvid video,.qvid canvas{height:190px;width:auto;aspect-ratio:9/16;border-radius:8px;background:#000;flex:none}.qvid .verify{max-width:320px}
 .qconfirm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--accent,#ff5a1f) 14%,transparent);border:1px solid color-mix(in srgb,var(--accent,#ff5a1f) 45%,transparent)}
 .vidbox{display:grid;place-items:center;background:#0d0f0e;border-radius:10px;min-height:120px;overflow:hidden}.vidbox:empty{display:none}.vidcv{display:block;width:auto;max-width:100%;height:min(56vh,560px);aspect-ratio:9/16}
 .field.sep{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
@@ -2550,12 +2551,39 @@ function qCard(t){
   return'<div class="qitem" data-q="'+esc(t.id)+'"><div class="qhead"><div style="min-width:0"><b class="qname">'+qTitle(t)+'</b><div class="verify">'+qMeta(t)+'</div></div><span class="pill '+(t.st==="new"?"":t.st)+'">'+Q_ST[t.st]+'</span></div>'+
     (vk?'<a class="verify qlink" href="'+esc(vk)+'" target="_blank" rel="noopener">'+esc(vk.replace(/^https:\/\//,""))+'</a>':'<span class="verify bad">Нет ссылки на ВК</span>')+
     (t.text?'<small class="verify">Текст правили вручную. <a href="#" data-act="auto">Вернуть автоматический</a></small>':'<small class="verify">Текст составлен сам от имени «'+esc(myName())+'», со ссылкой на черновик сайта.</small>')+
+    (t.st==="new"&&qOpenId===t.id?'<div class="qvid" data-v="'+esc(t.id)+'"></div>':'')+
     '<textarea class="qtext" aria-label="Текст сообщения">'+esc(t.text||qAuto[t.id]||"Составляю текст…")+'</textarea>'+
     '<div class="lrow qbtns">'+(vk?'<a class="btn primary" data-act="chat" href="'+esc(chat)+'" target="_blank" rel="noopener" title="Текст скопируется, откроется чат с группой">'+ico("vk")+'Отправить в ВК</a>':'')+'<button class="btn" data-act="copy" type="button">'+ico("copy")+'Скопировать текст</button><button class="btn" data-act="video" type="button" title="13-секундный ролик с их черновиком: прикрепите к сообщению">Ролик</button></div>'+
     '<div class="lrow qbtns"><span class="verify">Статус:</span><span class="qst">'+["sent","replied","client","no"].map(k=>'<button class="btn sm" type="button" data-st2="'+k+'" aria-pressed="'+(t.st===k)+'">'+Q_ST[k]+'</button>').join("")+(t.st!=="new"?'<button class="btn sm" type="button" data-st2="new">Вернуть в очередь</button>':'')+'</span>'+
     '<button class="btn sm ghost qdel" data-act="del" type="button">Удалить</button></div></div>';
 }
-let qOpenId=null,qSendPending=null;const Q_DAY=25;
+let qOpenId=null,qSendPending=null;
+/* Video for each queued business is recorded as soon as its card opens (the tab must be visible while recording),
+   so by the time the sender presses «Отправить» it's ready and downloads together with the copied text. */
+const qVid={};let qVidBusy=null;const qVidWait=[];
+function qVidPaint(id){
+  const host=document.querySelector('#qDlg [data-v="'+CSS.escape(id)+'"]');if(!host)return;const v=qVid[id]||{st:"wait"};
+  if(v.st==="ok"){if(!host.querySelector("video"))host.innerHTML='<video src="'+v.url+'" muted loop autoplay playsinline></video><div class="verify">Ролик готов: скачается сам, когда нажмёте «Отправить в ВК». <a href="'+v.url+'" download="'+esc(v.file)+'">Скачать сейчас</a></div>';return}
+  if(v.st==="busy"){if(v.cv&&v.cv.parentNode!==host){host.innerHTML="";host.appendChild(v.cv);const n=document.createElement("div");n.className="verify";n.innerHTML='<span class="spin"></span>Ролик собирается, около 15 секунд. Не переключайте вкладку.';host.appendChild(n)}else if(!v.cv)host.innerHTML='<div class="verify"><span class="spin"></span>Готовлю ролик…</div>';return}
+  if(v.st==="err"){host.innerHTML='<div class="verify bad">Ролик не получился ('+esc(v.err)+'). Можно отправить без него.</div>';return}
+  host.innerHTML='<div class="verify"><span class="spin"></span>Ролик в очереди…</div>';
+}
+async function qVidEnsure(id){
+  if(qVid[id]&&qVid[id].st!=="err"){qVidPaint(id);return}
+  if(qVidBusy&&qVidBusy!==id){if(!qVidWait.includes(id))qVidWait.push(id);qVidPaint(id);return}
+  const t=queue[id];if(!t)return;
+  qVidBusy=id;qVid[id]={st:"busy"};qVidPaint(id);
+  try{
+    const l=qLead(id,t);const R=await vBuildPage(l,()=>{});
+    const cv=document.createElement("canvas");cv.width=VW;cv.height=VH;qVid[id].cv=cv;qVidPaint(id);
+    if(document.visibilityState!=="visible")await new Promise(r=>{const f=()=>{if(document.visibilityState==="visible"){document.removeEventListener("visibilitychange",f);r()}};document.addEventListener("visibilitychange",f)});
+    const out=await vRecord(l,R,cv,()=>{});
+    qVid[id]={st:"ok",blob:out.blob,url:URL.createObjectURL(out.blob),file:(slugify(brandName(String(l.name).split(",")[0]).word)||"rolik")+"."+out.ext};
+  }catch(e){qVid[id]={st:"err",err:e.message||String(e)}}
+  qVidBusy=null;qVidPaint(id);
+  const nx=qVidWait.shift();if(nx&&queue[nx]&&queue[nx].st==="new"&&qOpenId===nx)qVidEnsure(nx);
+}
+function qVidDownload(id){const v=qVid[id];if(!v||v.st!=="ok")return false;const a=document.createElement("a");a.href=v.url;a.download=v.file;document.body.appendChild(a);a.click();a.remove();return true}const Q_DAY=25;
 /* sent today by me: counted by the time the status changed */
 function qToday(){const d0=new Date();d0.setHours(0,0,0,0);return Object.values(queue).filter(t=>t.st!=="new"&&t.stBy===myName()&&(t.stAt||0)>=+d0).length}
 /* back from the VK tab: ask whether the message went out */
@@ -2569,6 +2597,7 @@ function renderQDlg(){
   const nT=qToday(),ask=qSendPending&&qSendPending.id===qOpenId&&t.st==="new";
   $("#qDlgBody").innerHTML=(ask?'<div class="qconfirm" role="alert"><b>Отправили сообщение «'+qTitle(t)+'»?</b><span class="lrow" style="gap:8px"><button class="btn primary" type="button" data-act="sentyes">Да, отправил → следующий</button><button class="btn" type="button" data-act="sentno">Нет</button></span></div>':'')+
    '<div class="qdtop"><span class="verify">'+(pos>=0?'Ждёт отправки: '+(pos+1)+' из '+ids.length:Q_ST[t.st])+' · сегодня отправлено: '+nT+(nT>=Q_DAY?' <b class="bad">— на сегодня хватит, иначе ВК может ограничить аккаунт</b>':'')+'</span><span class="lrow" style="gap:6px">'+(ids.length>1||(pos<0&&ids.length)?'<button class="btn sm" type="button" data-act="next">Следующий →</button>':'')+'<button class="btn sm" type="button" data-act="close" aria-label="Закрыть">✕</button></span></div>'+qCard(Object.assign({id:qOpenId},t));
+  if(t.st==="new")qVidEnsure(qOpenId);
 }
 function openQ(id){qOpenId=id;renderQDlg();const d=$("#qDlg");if(!d.open)d.showModal()}
 function qNext(after){const ids=qNewIds().filter(x=>x!==after);if(!ids.length){qOpenId=null;renderQDlg();toast("Очередь пуста: всё отправлено");return}const i=qNewIds().indexOf(after);const nx=ids.find(x=>qNewIds().indexOf(x)>i)||ids[0];openQ(nx)}
@@ -2603,7 +2632,7 @@ function qClick(e){
   const s2=e.target.closest("[data-st2]");if(s2){setTaskSt(id,s2.dataset.st2);return}
   const a=e.target.closest("[data-act]");if(!a)return;
   const txt=it.querySelector(".qtext").value;
-  if(a.dataset.act==="chat"){qSendPending={id,at:Date.now()};copy(txt,"Текст скопирован: в чате нажмите Ctrl+V и Enter, потом вернитесь сюда")}
+  if(a.dataset.act==="chat"){qSendPending={id,at:Date.now()};const vd=qVidDownload(id);copy(txt,vd?"Текст скопирован, ролик скачан. В чате: Ctrl+V, перетащите ролик из загрузок в чат (или скрепка → Видео), Enter":(qVid[id]&&qVid[id].st==="busy"?"Текст скопирован. Ролик ещё собирается: можно отправить текст, а ролик следом":"Текст скопирован: в чате нажмите Ctrl+V и Enter, потом вернитесь сюда"))}
 
   else if(a.dataset.act==="copy"){copy(txt,"Текст скопирован")}
   else if(a.dataset.act==="video"){makeVideo(qLead(id,t))}
